@@ -13,6 +13,7 @@ Run:  DREX_API_KEY=... python3 server.py   ->  http://127.0.0.1:8080
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import random
@@ -51,9 +52,9 @@ DREX_TIMEOUT_S = 60
 DREX_ATTEMPTS = 3
 
 # --- Unlock policy (review and tune these on your own enrolment data) -------
-MIN_IDENTITY_PROB = 0.80   # Drex probability for the chosen guest
-MIN_RELIABLE_PROB = 0.70   # Drex probability that the capture is trustworthy
-MAX_MEAN_DISTANCE = 0.55   # hard gate in code: never unlock above this distance
+MIN_IDENTITY_PROB = 0.80  # Drex probability for the chosen guest
+MIN_RELIABLE_PROB = 0.70  # Drex probability that the capture is trustworthy
+MAX_MEAN_DISTANCE = 0.55  # hard gate in code: never unlock above this distance
 
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 
@@ -73,7 +74,8 @@ def tls_context() -> ssl.SSLContext:
 
 
 OPENER = urllib.request.build_opener(
-    urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=tls_context()), NoRedirect)
+    urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=tls_context()), NoRedirect
+)
 
 
 class DrexUnavailable(Exception):
@@ -107,7 +109,7 @@ def call_drex(body: dict) -> dict:
             last = f"HTTP {e.code}"
             log(f"Drex error {e.code} request_id={rid} attempt={attempt + 1}")
             if e.code not in (429, 500, 529):
-                raise DrexUnavailable(last)
+                raise DrexUnavailable(last) from e
             ms = e.headers.get("retry-after-ms")
             if ms and ms.isdigit():
                 wait = int(ms) / 1000
@@ -116,7 +118,7 @@ def call_drex(body: dict) -> dict:
             log(f"Drex network error {type(e).__name__} attempt={attempt + 1}")
         if attempt == DREX_ATTEMPTS - 1:
             raise DrexUnavailable(last)
-        time.sleep(min(wait if wait is not None else 0.5 * 2 ** attempt + random.random() * 0.3, 8))
+        time.sleep(min(wait if wait is not None else 0.5 * 2**attempt + random.random() * 0.3, 8))
     else:  # pragma: no cover
         raise DrexUnavailable(last)
 
@@ -188,12 +190,16 @@ def parse_identify(payload: dict):
         cid = str(c.get("id", ""))
         if not ID_RE.match(cid) or cid == "no_match":
             raise ValueError("bad candidate id")
-        cands.append({
-            "id": cid,
-            "name": re.sub(r"\s+", " ", str(c.get("name", "Guest"))).strip()[:60] or "Guest",
-            "mean": num(c["mean"]), "best": num(c["best"]), "worst": num(c["worst"]),
-            "samples": int(num(c.get("samples", 1), 1, 50)),
-        })
+        cands.append(
+            {
+                "id": cid,
+                "name": re.sub(r"\s+", " ", str(c.get("name", "Guest"))).strip()[:60] or "Guest",
+                "mean": num(c["mean"]),
+                "best": num(c["best"]),
+                "worst": num(c["worst"]),
+                "samples": int(num(c.get("samples", 1), 1, 50)),
+            }
+        )
     if len({c["id"] for c in cands}) != len(cands):
         raise ValueError("duplicate candidate id")
     cands.sort(key=lambda c: c["mean"])
@@ -224,8 +230,12 @@ def identify(payload: dict) -> tuple[int, dict]:
     answers = resp.get("answers") or {}
     ident, rel = answers.get("identity") or {}, answers.get("reliable") or {}
     labels = {c["id"] for c in cands} | {"no_match"}
-    if (ident.get("type") != "choice" or ident.get("choice") not in labels
-            or rel.get("type") != "noul" or not isinstance(rel.get("noul"), (int, float))):
+    if (
+        ident.get("type") != "choice"
+        or ident.get("choice") not in labels
+        or rel.get("type") != "noul"
+        or not isinstance(rel.get("noul"), (int, float))
+    ):
         log(f"Drex answer shape invalid request_id={resp.get('request_id')}")
         return 503, {"ok": False, "error": "drex_unavailable", "message": "invalid answer shape"}
 
@@ -245,12 +255,20 @@ def identify(payload: dict) -> tuple[int, dict]:
         reason = "Distance above hard limit"
     unlock = reason == "ok"
 
-    log(f"identify room={room} choice={choice} p={prob:.2f} reliable={reliable:.2f} "
-        f"unlock={unlock} request_id={resp.get('request_id')}")
+    log(
+        f"identify room={room} choice={choice} p={prob:.2f} reliable={reliable:.2f} "
+        f"unlock={unlock} request_id={resp.get('request_id')}"
+    )
     return 200, {
-        "ok": True, "unlock": unlock, "user_id": choice if unlock else None,
-        "choice": choice, "probability": round(prob, 4), "reliable": round(reliable, 4),
-        "reason": reason, "model": resp.get("model"), "request_id": resp.get("request_id"),
+        "ok": True,
+        "unlock": unlock,
+        "user_id": choice if unlock else None,
+        "choice": choice,
+        "probability": round(prob, 4),
+        "reliable": round(reliable, 4),
+        "reason": reason,
+        "model": resp.get("model"),
+        "request_id": resp.get("request_id"),
     }
 
 
@@ -278,10 +296,13 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/api/status":
-            return self.send_json(200, {
-                "drex_key_configured": bool(os.environ.get("DREX_API_KEY", "").strip()),
-                "model": DREX_MODEL,
-            })
+            return self.send_json(
+                200,
+                {
+                    "drex_key_configured": bool(os.environ.get("DREX_API_KEY", "").strip()),
+                    "model": DREX_MODEL,
+                },
+            )
         return super().do_GET()
 
     def do_POST(self):
@@ -297,13 +318,14 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError:
             return self.send_json(400, {"ok": False, "error": "bad_json"})
         code, obj = identify(payload)
-        self.send_json(code, obj)
+        return self.send_json(code, obj)
 
 
 def open_in_chrome(urls: list[str]) -> None:
     """Open the lock and manager in Google Chrome (falls back to the default browser)."""
     import subprocess
     import webbrowser
+
     try:
         if sys.platform == "darwin":
             subprocess.run(["open", "-a", "Google Chrome", *urls], check=True)
@@ -326,11 +348,11 @@ def open_in_chrome(urls: list[str]) -> None:
 if __name__ == "__main__":
     srv = ThreadingHTTPServer((HOST, PORT), Handler)
     key = "configured" if os.environ.get("DREX_API_KEY", "").strip() else "MISSING (face unlock disabled)"
-    print(f"Unlockurr running at http://{HOST}:{PORT}\n  Lock:     http://{HOST}:{PORT}/lock.html\n"
-          f"  Manager:  http://{HOST}:{PORT}/manager.html\n  Drex key: {key}")
+    print(
+        f"Unlockurr running at http://{HOST}:{PORT}\n  Lock:     http://{HOST}:{PORT}/lock.html\n"
+        f"  Manager:  http://{HOST}:{PORT}/manager.html\n  Drex key: {key}"
+    )
     if "--no-browser" not in sys.argv:
         open_in_chrome([f"http://{HOST}:{PORT}/manager.html", f"http://{HOST}:{PORT}/lock.html"])
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         srv.serve_forever()
-    except KeyboardInterrupt:
-        pass
