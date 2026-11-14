@@ -1,0 +1,828 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Unlockurr Door Lock</title>
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/dist/face-api.js"></script>
+<script src="shared.js?v=7"></script>
+<style>
+  :root {
+    --brass: #c9a24a; --brass-dk: #8a6a22;
+    --metal-1: #e9ebee; --metal-2: #b9bec6; --metal-3: #8e949d;
+    --screen: #06090f; --ink: #e8eef8; --muted: #8a96a8;
+    --accent: #4f8cff; --ok: #2fd07f; --bad: #ff5468;
+    --ceil: 7vh; --floor: 14vh;
+    --dh: min(calc(100vh - var(--ceil) - var(--floor) - 5vh), 118vw);   /* door height */
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body { background: #20150d; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    overflow: hidden; color: var(--ink); user-select: none; }
+  .mgr-link {
+    position: fixed; top: 14px; right: 16px; z-index: 20; font-size: 13px; color: #3a2c1a;
+    background: rgba(255,255,255,.6); padding: 7px 12px; border-radius: 999px; text-decoration: none;
+    border: 1px solid rgba(0,0,0,.08); transition: opacity .4s;
+  }
+  .mgr-link:hover { background: rgba(255,255,255,.85); }
+  body.zoomed .mgr-link { opacity: 0; pointer-events: none; }
+
+  /* ---------- scene + zoom ---------- */
+  .scene { position: fixed; inset: 0; transition: transform 1s cubic-bezier(.22,.8,.2,1); }
+  .hint { position: fixed; left: 50%; bottom: 3.2vh; z-index: 15; transform: translate(-50%, 8px); opacity: 0; pointer-events: none;
+    padding: 8px 16px; border-radius: 99px; background: rgba(20,14,9,.82); color: #f6ead6; font-size: 13.5px; letter-spacing: .01em;
+    border: 1px solid rgba(255,255,255,.12); transition: opacity .35s, transform .35s; white-space: nowrap; }
+  .hint.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ---------- corridor ---------- */
+  .ceiling { position: absolute; left: 0; right: 0; top: 0; height: var(--ceil);
+    background: linear-gradient(180deg, #e9e1d3, #f6f0e6 80%); }
+  .ceiling::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1.2vh; height: 1.6vh;   /* crown molding */
+    background: linear-gradient(180deg, #fbf7f0, #e2d8c6 45%, #f5efe4 55%, #cfc3ad); box-shadow: 0 .8vh 1.4vh rgba(60,40,20,.22); }
+  .downlight { position: absolute; top: calc(var(--ceil) * .35); width: 3.2vh; height: 1vh; border-radius: 50%; background: #fffbea;
+    box-shadow: 0 0 1.2vh 0.4vh rgba(255,236,200,.9); transform: translateX(-50%); }
+  .wall { position: absolute; left: 0; right: 0; top: var(--ceil); bottom: var(--floor);
+    background:
+      radial-gradient(ellipse 34vh 52vh at 50% 0%, rgba(255,232,192,.5), transparent 72%),
+      repeating-linear-gradient(90deg, rgba(120,96,64,.07) 0 1px, transparent 1px 2.2vh, rgba(255,255,255,.06) 2.2vh calc(2.2vh + 1px), transparent calc(2.2vh + 1px) 4.4vh),
+      radial-gradient(circle at 50% 50%, rgba(140,112,72,.10) 0 18%, transparent 20%) 0 0 / 4.4vh 4.4vh,
+      linear-gradient(180deg, #d3c3a5, #c9b693 70%, #bda985);
+    box-shadow: inset 0 0 18vh rgba(40,24,10,.45); }
+  .wainscot { position: absolute; left: 0; right: 0; bottom: var(--floor); height: calc(var(--dh) * .36);
+    background:
+      linear-gradient(180deg, #f3ecdf 0, #d9cdb7 1.1vh, #efe7d9 1.5vh, transparent 1.6vh),
+      repeating-linear-gradient(90deg, transparent 0 1.6vh, rgba(80,60,35,.16) 1.6vh calc(1.6vh + 2px), rgba(255,255,255,.5) calc(1.6vh + 2px) calc(1.6vh + 3px),
+        transparent calc(1.6vh + 3px) calc(12vh - 3px), rgba(255,255,255,.5) calc(12vh - 3px) calc(12vh - 2px), rgba(80,60,35,.16) calc(12vh - 2px) 12vh, transparent 12vh 13.6vh),
+      linear-gradient(180deg, #e7ddcb, #d6c9b1);
+    box-shadow: inset 0 0 14vh rgba(40,24,10,.35); }
+  .wainscot::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1.6vh;   /* baseboard */
+    background: linear-gradient(180deg, #f6f0e5, #d8ccb6); box-shadow: 0 -1px 0 rgba(0,0,0,.12); }
+  .floor { position: absolute; left: 0; right: 0; bottom: 0; height: var(--floor);
+    background:
+      linear-gradient(180deg, rgba(0,0,0,.45), transparent 35%, rgba(0,0,0,.35)),
+      radial-gradient(circle at 50% 50%, rgba(224,178,92,.38) 0 7%, transparent 8%) 0 0 / 3.4vh 3.4vh,
+      repeating-linear-gradient(45deg, rgba(224,178,92,.16) 0 1px, transparent 1px 2.4vh),
+      repeating-linear-gradient(-45deg, rgba(224,178,92,.16) 0 1px, transparent 1px 2.4vh),
+      linear-gradient(180deg, #521a2a, #3a0f1c); }
+
+  /* ---------- doorway ---------- */
+  .doorway { position: absolute; left: 50%; bottom: var(--floor); height: var(--dh); aspect-ratio: .48; transform: translateX(-50%); }
+  .casing { position: absolute; inset: calc(var(--dh) * -.032) calc(var(--dh) * -.032) 0;
+    background: linear-gradient(90deg, #e8dfcf, #fbf7f0 18%, #e3d9c6 40%, #f7f1e7 70%, #d9ceb9);
+    border-radius: 3px 3px 0 0; box-shadow: 0 0 0 1px rgba(80,60,35,.25), 0 1.4vh 3vh rgba(40,24,10,.35), inset 0 0 0 calc(var(--dh) * .006) rgba(255,255,255,.6); }
+  .opening { position: absolute; inset: 0; perspective: 1700px; perspective-origin: 30% 50%; cursor: default; }
+  body.door-open .opening { cursor: pointer; }
+  .room { position: absolute; inset: 0; overflow: hidden; background: #1b120a; }
+  .room svg { width: 100%; height: 100%; display: block; }
+  .opening::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1;    /* jamb depth */
+    box-shadow: inset calc(var(--dh) * .012) calc(var(--dh) * .012) calc(var(--dh) * .02) rgba(0,0,0,.45); }
+  .spill { position: absolute; top: 100%; left: -12%; right: -12%; height: var(--floor); pointer-events: none; opacity: 0; transition: opacity 1.6s;
+    background: linear-gradient(180deg, rgba(255,214,150,.55), rgba(255,200,130,.12) 70%, transparent);
+    clip-path: polygon(12% 0, 88% 0, 118% 100%, -18% 100%); }
+  body.door-open .spill { opacity: 1; }
+  .sconce { position: absolute; top: 30%; width: calc(var(--dh) * .045); height: calc(var(--dh) * .11); }
+  .sconce.l { right: calc(100% + var(--dh) * .13); } .sconce.r { left: calc(100% + var(--dh) * .13); }
+  .sconce::before { content: ""; position: absolute; left: 50%; top: 45%; width: calc(var(--dh) * .5); height: calc(var(--dh) * .62); transform: translate(-50%, -50%);
+    background: radial-gradient(ellipse at center, rgba(255,224,170,.55), rgba(255,214,150,.12) 45%, transparent 70%); pointer-events: none; }
+  .sconce i { position: absolute; left: 50%; top: 0; bottom: 0; width: 18%; transform: translateX(-50%); border-radius: 2px;
+    background: linear-gradient(90deg, var(--brass-dk), #f0d58c 45%, var(--brass-dk)); box-shadow: 0 .3vh .6vh rgba(0,0,0,.35); }
+  .sconce b { position: absolute; left: 0; right: 0; top: 18%; height: 58%; border-radius: 30% 30% 12% 12% / 14% 14% 8% 8%;
+    background: linear-gradient(90deg, #f3e3c2, #fffaf0 45%, #f0dcb4); box-shadow: 0 0 1.6vh .4vh rgba(255,226,170,.85), inset 0 -.6vh 1vh rgba(255,190,110,.5); }
+  .wall-plaque { position: absolute; left: calc(100% + var(--dh) * .07); top: 47%; padding: calc(var(--dh) * .012) calc(var(--dh) * .02);
+    border-radius: calc(var(--dh) * .008); text-align: center; color: #3b2a07;
+    background: linear-gradient(160deg, #ecd185, var(--brass) 45%, var(--brass-dk));
+    box-shadow: 0 .4vh 1vh rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.55);
+    font: 700 calc(var(--dh) * .034)/1 Georgia, "Times New Roman", serif; letter-spacing: .06em; text-shadow: 0 1px 0 rgba(255,255,255,.35); }
+  .wall-plaque small { display: block; font: 600 calc(var(--dh) * .011)/1 -apple-system, sans-serif; letter-spacing: .3em; margin-bottom: calc(var(--dh) * .006); opacity: .75; }
+  .wall-plaque em { display: block; margin-top: calc(var(--dh) * .008); font-style: normal; letter-spacing: .25em; font-size: .3em; opacity: .55; }   /* braille */
+
+  /* ---------- door leaf ---------- */
+  .door {
+    position: absolute; inset: 0; z-index: 2; container-type: inline-size; transform-origin: left center;
+    background:
+      repeating-linear-gradient(92deg, rgba(255,255,255,.025) 0 3px, transparent 3px 9px, rgba(0,0,0,.05) 9px 11px),
+      linear-gradient(90deg, #4a2a15, #6b3f22 18%, #82502d 50%, #6b3f22 82%, #4a2a15);
+    box-shadow: inset 0 0 0 2px rgba(0,0,0,.25), inset -10px 0 24px rgba(0,0,0,.25);
+    transition: transform 1.7s cubic-bezier(.45,.05,.2,1); backface-visibility: hidden;
+  }
+  .door::after { content: ""; position: absolute; inset: 0; background: #000; opacity: 0; transition: opacity 1.7s; pointer-events: none; }
+  .door.open { transform: rotateY(80deg); }
+  .door.open::after { opacity: .18; }
+  .panel { position: absolute; left: 11%; right: 11%; border-radius: 3px;
+    box-shadow: inset 3px 3px 6px rgba(0,0,0,.45), inset -2px -2px 4px rgba(255,255,255,.08), 0 1px 0 rgba(255,255,255,.06); }
+  .panel.p1 { top: 6%; height: 32%; } .panel.p2 { top: 62%; height: 31%; }
+  .hinge { position: absolute; left: 0; width: 1.6cqw; height: 6cqw; background: linear-gradient(90deg, #8a6a22, #e7c873, #8a6a22); border-radius: 0 2px 2px 0; }
+  .peephole { position: absolute; top: 25%; left: 50%; width: 3.4cqw; aspect-ratio: 1; transform: translate(-50%,-50%);
+    border-radius: 50%; background: radial-gradient(circle at 40% 40%, #555 0 25%, #111 40%, var(--brass) 45%, var(--brass-dk) 80%);
+    box-shadow: 0 1px 2px rgba(0,0,0,.6); }
+  .kick { position: absolute; left: 0; right: 0; bottom: 0; height: 5%;
+    background: linear-gradient(180deg, #d7b35e, var(--brass-dk)); box-shadow: inset 0 2px 0 rgba(255,255,255,.35); }
+
+  /* ---------- lock unit ---------- */
+  .lock {
+    /* laid out at a normal size, then scaled down to fit the door (see sizeLock) so text never hits Chrome's minimum font size */
+    position: absolute; right: 7%; top: 41%; width: 22.3em; font-size: 14px; cursor: pointer; outline: none;
+    transform: scale(var(--lk, .16)); transform-origin: right top; transition: transform 1s cubic-bezier(.22,.8,.2,1); z-index: 3;
+    padding: 1.1em 1em 1.3em; border-radius: 2.4em 2.4em 1.6em 1.6em;
+    background: linear-gradient(100deg, var(--metal-3), var(--metal-1) 22%, var(--metal-2) 55%, var(--metal-1) 80%, var(--metal-3));
+    box-shadow: 0 1.2em 2.4em rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.9), inset 0 -2px 3px rgba(0,0,0,.25);
+    display: flex; flex-direction: column; align-items: center; gap: .9em;
+  }
+  .lock:focus-visible { box-shadow: 0 0 0 .4em var(--accent); }
+  .screen-sleep { position: absolute; inset: 0; z-index: 6; pointer-events: none; transition: opacity .6s;
+    background: linear-gradient(135deg, rgba(255,255,255,.08), transparent 35%), linear-gradient(160deg, #0b0e13, #020304 65%); }
+  body.awake .screen-sleep { opacity: 0; }
+  .lock-head { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0 .4em; }
+  .brand { display: inline-flex; align-items: center; gap: .5em; }
+  .brand-mark { width: 1.9em; height: 1.9em; border-radius: .55em; display: grid; place-items: center; flex: none;
+    background: linear-gradient(150deg, #3ddc84 0%, #16a34a 55%, #0d7a37 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.4), inset 0 -1px 0 rgba(0,0,0,.25), 0 .1em .3em rgba(0,0,0,.3); }
+  .brand-mark svg { width: 1.25em; height: 1.25em; filter: drop-shadow(0 1px 1px rgba(0,0,0,.3)); }
+  .brand-word { font: 700 1.15em/1 -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif; letter-spacing: -.02em;
+    color: #000; text-shadow: 0 .05em 0 rgba(255,255,255,.6); }
+  .brand-word span { color: inherit; }
+  .sensor { display: flex; align-items: center; gap: .55em; }
+  .lens { width: 1.5em; aspect-ratio: 1; border-radius: 50%;
+    background: radial-gradient(circle at 38% 35%, #6b7fae 0 8%, #12182a 22%, #000 60%, #333 62%, #111 100%);
+    box-shadow: 0 0 0 .18em #2b2f36, 0 0 0 .28em #9aa1ab; }
+  .led { width: .55em; aspect-ratio: 1; border-radius: 50%; background: #5a1f25; box-shadow: inset 0 0 2px #000; transition: .3s; }
+  .led.on-red { background: var(--bad); box-shadow: 0 0 .6em var(--bad); }
+  .led.on-green { background: var(--ok); box-shadow: 0 0 .8em var(--ok); }
+  .led.on-blue { background: var(--accent); box-shadow: 0 0 .6em var(--accent); animation: pulse 1.4s infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  .bezel { width: 100%; padding: .45em; border-radius: 1.4em; background: #15181d;
+    box-shadow: inset 0 0 0 1px #000, inset 0 2px 4px rgba(0,0,0,.8), 0 1px 0 rgba(255,255,255,.6); }
+  .screen {
+    position: relative; overflow: hidden; border-radius: 1em; aspect-ratio: 0.66;
+    background: radial-gradient(120% 80% at 50% 0%, #142038, var(--screen) 70%);
+    display: flex; flex-direction: column;
+  }
+  .screen::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(135deg, rgba(255,255,255,.07), transparent 40%); }
+  .status { display: flex; justify-content: space-between; align-items: center; padding: .8em 1em .2em; font-size: .85em; color: var(--muted); }
+  .chip { display: inline-flex; align-items: center; gap: .35em; padding: .2em .6em; border-radius: 99em; background: rgba(255,255,255,.06); }
+  .chip i { width: .5em; height: .5em; border-radius: 50%; background: var(--muted); }
+  .chip.ok i { background: var(--ok); } .chip.bad i { background: var(--bad); }
+
+  .view { position: absolute; inset: 2.2em 0 0; display: flex; flex-direction: column; align-items: center; padding: .6em 1em 1em; transition: opacity .3s, transform .3s; }
+  .view.hidden { opacity: 0; pointer-events: none; transform: scale(.97); }
+
+  /* face view */
+  .room-big { font-size: .85em; letter-spacing: .25em; color: var(--muted); margin-top: .2em; }
+  .face-ring { position: relative; width: 92%; aspect-ratio: 4/3; margin: 1.1em 0 .9em; }
+  .face-ring video { width: 100%; height: 100%; object-fit: contain; border-radius: .8em; transform: scaleX(-1); background: #0b111c; display: block; }
+  .face-ring svg { position: absolute; inset: -4%; width: 108%; height: 108%; overflow: visible; }
+  .ring-track { fill: none; stroke: rgba(255,255,255,.08); stroke-width: 3; }
+  .ring-scan { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 60 254; animation: spin 1.6s linear infinite; }
+  .ring-prog { fill: none; stroke: var(--ok); stroke-width: 3.4; stroke-linecap: round; stroke-dasharray: 0 314; transition: stroke-dasharray .35s; }
+  .face-ring.idle .ring-scan { stroke: rgba(255,255,255,.18); }
+  .face-ring.verifying .ring-scan { stroke: #b48bff; animation-duration: .7s; }
+  .face-ring.denied { animation: shake .45s; }
+  .face-ring.denied .ring-scan { stroke: var(--bad); }
+  @keyframes spin { to { stroke-dashoffset: -314; } }
+  .cam-off { position: absolute; inset: 0; display: none; place-items: center; text-align: center; border-radius: .8em; background: #0b111c; color: var(--muted); font-size: .85em; padding: 1.2em; }
+  .face-ring.nocam .cam-off { display: grid; }
+  .deny-banner { position: absolute; inset: 0; border-radius: .8em; display: grid; place-content: center; justify-items: center; gap: .35em;
+    background: rgba(40, 6, 12, .62); box-shadow: inset 0 0 0 .16em var(--bad); color: #fff; font-weight: 600; font-size: 1.05em;
+    opacity: 0; transform: scale(.96); transition: opacity .18s, transform .18s; pointer-events: none; }
+  .face-ring .deny-banner svg { position: static; inset: auto; width: 2.6em; height: 2.6em; padding: .45em; border-radius: 50%; background: var(--bad); }
+  .face-ring.unrecognized .deny-banner { opacity: 1; transform: none; }
+  .face-ring.unrecognized .ring-scan { stroke: var(--bad); animation-play-state: paused; }
+  .msg { min-height: 2.6em; text-align: center; font-size: 1em; line-height: 1.3; }
+  .msg small { display: block; color: var(--muted); font-size: .78em; margin-top: .25em; }
+  .msg.bad { color: var(--bad); }
+  .switch { margin-top: auto; border: 0; color: var(--ink); background: rgba(255,255,255,.08); padding: .75em 1.4em; border-radius: 99em; font: inherit; font-size: .9em; cursor: pointer; display: inline-flex; gap: .5em; align-items: center; }
+  .switch:active { background: rgba(255,255,255,.16); transform: scale(.97); }
+  .switch svg { width: 1.1em; height: 1.1em; }
+
+  /* pin view */
+  .pin-title { font-size: .95em; margin-top: .4em; }
+  .dots { display: flex; gap: .55em; margin: .9em 0 .3em; height: 1em; align-items: center; }
+  .dot { width: .75em; height: .75em; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.35); transition: .15s; }
+  .dot.f { background: var(--ink); border-color: var(--ink); transform: scale(1.1); }
+  .dot.opt { border-style: dashed; opacity: .45; }
+  .dots.bad { animation: shake .45s; } .dots.bad .dot { border-color: var(--bad); background: var(--bad); }
+  .pin-msg { font-size: .78em; color: var(--muted); min-height: 1.3em; text-align: center; }
+  .pin-msg.bad { color: var(--bad); }
+  .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: .45em; width: 90%; margin-top: .3em; }
+  .key { aspect-ratio: 1.5; border: 0; border-radius: 1em; font: 500 1.55em/1 inherit; font-family: inherit; color: var(--ink); cursor: pointer;
+    background: linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.05)); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); transition: transform .08s, background .08s; }
+  .key:active, .key.press { background: rgba(79,140,255,.45); transform: scale(.94); }
+  .key.fn { font-size: 1.1em; color: var(--muted); }
+  .key.go { background: linear-gradient(180deg, #3d7bff, #2a5fd8); color: #fff; }
+  .key.go:disabled { opacity: .35; }
+  .key svg { width: 1.1em; height: 1.1em; }
+  .pin-view .switch { margin-top: .8em; }
+
+  /* welcome overlay */
+  .welcome { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .6em;
+    background: radial-gradient(110% 70% at 50% 35%, #0f4a37, #04140e 75%); opacity: 0; pointer-events: none; transition: opacity .4s; text-align: center; padding: 1em; }
+  .welcome.show { opacity: 1; pointer-events: auto; }
+  .w-avatar { position: relative; width: 46%; aspect-ratio: 1; }
+  .w-avatar .avatar { width: 100%; height: 100%; font-size: 3.4em; box-shadow: 0 0 0 .22em rgba(47,208,127,.9), 0 0 2em rgba(47,208,127,.5); transform: scale(.3); opacity: 0; }
+  .welcome.show .w-avatar .avatar { animation: pop .7s .25s cubic-bezier(.2,1.4,.4,1) forwards; }
+  .burst { position: absolute; inset: -18%; border-radius: 50%; border: .15em solid var(--ok); opacity: 0; }
+  .welcome.show .burst { animation: burst 1.1s .45s ease-out; }
+  .welcome.show .burst.b2 { animation-delay: .7s; }
+  .w-check { position: absolute; right: -2%; bottom: -2%; width: 30%; aspect-ratio: 1; border-radius: 50%; background: var(--ok); display: grid; place-items: center; box-shadow: 0 0 0 .2em #04140e; transform: scale(0); }
+  .w-check svg { width: 60%; } .w-check path { stroke-dasharray: 30; stroke-dashoffset: 30; }
+  .welcome.show .w-check { animation: pop .45s .8s cubic-bezier(.2,1.6,.4,1) forwards; }
+  .welcome.show .w-check path { animation: draw .4s 1.05s forwards; }
+  .w-hello { font-size: .95em; letter-spacing: .3em; text-transform: uppercase; color: #8ff0bf; opacity: 0; margin-top: .8em; }
+  .w-name { font: 600 1.7em/1.15 Georgia, "Times New Roman", serif; opacity: 0; max-width: 100%; overflow-wrap: anywhere; }
+  .w-sub { font-size: .78em; color: #9cc9b4; opacity: 0; }
+  .welcome.show .w-hello { animation: rise .5s .9s forwards; }
+  .welcome.show .w-name { animation: rise .55s 1.05s forwards; }
+  .welcome.show .w-sub { animation: rise .5s 1.3s forwards; }
+  .bolt { position: absolute; bottom: 1.2em; left: 50%; transform: translateX(-50%); width: 5.4em; height: .5em; border-radius: 1em; background: rgba(255,255,255,.12); overflow: hidden; }
+  .bolt i { position: absolute; inset: 0; background: var(--ok); border-radius: 1em; transform: translateX(0); }
+  .welcome.show .bolt i { animation: retract .8s .4s cubic-bezier(.6,0,.2,1) forwards; }
+  @keyframes pop { to { transform: scale(1); opacity: 1; } }
+  @keyframes burst { from { opacity: .9; transform: scale(.75); } to { opacity: 0; transform: scale(1.35); } }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(.6em); } to { opacity: 1; transform: none; } }
+  @keyframes retract { to { transform: translateX(-100%); } }
+  @keyframes shake { 20%, 60% { transform: translateX(-.4em); } 40%, 80% { transform: translateX(.4em); } }
+
+  .avatar { border-radius: 50%; display: grid; place-items: center; overflow: hidden; color: #fff; font-weight: 600; letter-spacing: .02em; }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+  /* lever handle */
+  .lever-wrap { position: relative; width: 100%; height: 3.6em; margin-top: .2em; }
+  .lever-rose { position: absolute; left: 50%; top: 50%; width: 3.6em; height: 3.6em; transform: translate(-50%, -50%); border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fff, var(--metal-2) 55%, var(--metal-3)); box-shadow: 0 .3em .6em rgba(0,0,0,.45); }
+  .lever { position: absolute; right: 50%; top: 50%; width: 15em; height: 1.5em; margin-top: -.75em; margin-right: -1.1em;
+    border-radius: 1em .75em .75em 1em; transform-origin: calc(100% - 1.1em) 50%; transition: transform .6s cubic-bezier(.4,1.6,.5,1);
+    background: linear-gradient(180deg, #fff, var(--metal-2) 45%, var(--metal-3)); box-shadow: 0 .4em .8em rgba(0,0,0,.45); }
+  .lever.down { transform: rotate(-32deg); }
+  /* mechanical key override */
+  .lever-rose { cursor: pointer; }
+  .rose-cap { position: absolute; inset: .3em; border-radius: 50%; z-index: 2;
+    background: radial-gradient(circle at 35% 30%, #fff, var(--metal-2) 60%, var(--metal-3));
+    box-shadow: 0 .12em .25em rgba(0,0,0,.45), inset 0 0 0 .08em rgba(255,255,255,.7), inset 0 -.12em .2em rgba(0,0,0,.18);
+    transition: transform .55s cubic-bezier(.3,1.3,.5,1), opacity .45s; }
+  .lever-wrap.open-cap .rose-cap { transform: translate(1.8em, 2.6em) rotate(50deg) scale(.85); opacity: 0; pointer-events: none; }
+  .keyhole { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%; }
+  .keyhole svg { width: 1.3em; height: 1.8em; transform: translateY(.32em); }
+  .lever-wrap.open-cap .keyhole::after { content: ""; position: absolute; inset: -.35em; border-radius: 50%; border: .16em solid var(--accent);
+    animation: keyPulse 1.4s ease-out infinite; pointer-events: none; }
+  .lever-wrap.keyed .keyhole::after { display: none; }
+  @keyframes keyPulse { from { opacity: .9; transform: scale(.85); } to { opacity: 0; transform: scale(1.25); } }
+  .mkey { position: absolute; left: 50%; top: 50%; width: 2.6em; height: 5.4em; margin: -5.4em 0 0 -1.3em; transform-origin: 50% 100%;
+    opacity: 0; pointer-events: none; z-index: 3; filter: drop-shadow(0 .25em .3em rgba(0,0,0,.45)); }
+  .mkey svg { display: block; width: 100%; height: 100%; }
+  .mkey.use { animation: keyUse 1.3s forwards; }
+  @keyframes keyUse {
+    0% { opacity: 0; transform: translate(2.4em, 4.8em) scale(1.9) rotate(-10deg); animation-timing-function: cubic-bezier(.2,.8,.3,1); }
+    20% { opacity: 1; }
+    55% { opacity: 1; transform: none; }
+    68% { opacity: 1; transform: none; animation-timing-function: cubic-bezier(.5,0,.3,1); }
+    100% { opacity: 1; transform: rotate(90deg); }
+  }
+  .switches { margin-top: auto; display: flex; gap: .5em; }
+  .switches .switch { margin-top: 0; }
+  .card-slot { width: 40%; height: .35em; border-radius: .2em; background: #23262c; box-shadow: inset 0 1px 2px #000, 0 1px 0 rgba(255,255,255,.7); }
+
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+</style>
+</head>
+<body>
+<a class="mgr-link" href="manager.html" target="unlockurr-manager">Open Lock Manager ↗</a>
+
+<div class="scene" id="scene">
+  <div class="wall"></div>
+  <div class="ceiling"><span class="downlight" style="left:calc(50% - var(--dh) * .3)"></span><span class="downlight" style="left:calc(50% + var(--dh) * .3)"></span></div>
+  <div class="wainscot"></div>
+  <div class="floor"></div>
+
+  <div class="doorway" id="doorway">
+    <div class="casing"></div>
+    <div class="sconce l"><i></i><b></b></div>
+    <div class="sconce r"><i></i><b></b></div>
+    <div class="wall-plaque"><small>ROOM</small><span id="roomPlaque">1208</span><em>⠁⠃⠉⠙</em></div>
+    <div class="opening" id="opening">
+      <div class="room" id="room"></div>
+      <div class="door" id="door">
+        <span class="hinge" style="top:8%"></span><span class="hinge" style="top:47%"></span><span class="hinge" style="top:86%"></span>
+        <div class="panel p1"></div><div class="panel p2"></div>
+        <div class="peephole"></div>
+  <div class="lock" id="lock" tabindex="0" role="button" aria-label="Door lock – hover or tap to wake">
+          <div class="lock-head">
+            <div class="brand" aria-label="Unlockurr"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round"><path d="M4 8.5V6.5A2.5 2.5 0 0 1 6.5 4h2M15.5 4h2A2.5 2.5 0 0 1 20 6.5v2M20 15.5v2a2.5 2.5 0 0 1-2.5 2.5h-2M8.5 20h-2A2.5 2.5 0 0 1 4 17.5v-2"/><circle cx="12" cy="10.4" r="2.3" fill="#fff" stroke="none"/><path d="M11 11.8 10.3 16h3.4L13 11.8z" fill="#fff" stroke="none"/></svg></span><span class="brand-word">Unlock<span>urr</span></span></div>
+            <div class="sensor"><span class="led" id="led"></span><span class="lens" title="Face ID camera"></span></div>
+          </div>
+
+          <div class="bezel"><div class="screen" id="screen">
+            <div class="screen-sleep"></div>
+            <div class="status">
+              <span id="clock">--:--</span>
+              <span class="chip" id="drexChip" title="Drex face decision service"><i></i>Drex</span>
+            </div>
+
+            <!-- Face ID view -->
+            <section class="view face-view" id="faceView">
+              <div class="room-big">ROOM <span id="roomScreen">1208</span></div>
+              <div class="face-ring idle" id="ring">
+                <video id="video" playsinline muted autoplay></video>
+                <div class="cam-off" id="camOff">Camera unavailable</div>
+                <div class="deny-banner" id="denyBanner" role="alert"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg><span id="denyText">Face not recognized</span></div>
+                <svg viewBox="0 0 108 81" preserveAspectRatio="none"><rect class="ring-track" x="2" y="2" width="104" height="77" rx="7" pathLength="314"/><rect class="ring-scan" x="2" y="2" width="104" height="77" rx="7" pathLength="314"/><rect class="ring-prog" id="prog" x="2" y="2" width="104" height="77" rx="7" pathLength="314"/></svg>
+              </div>
+              <div class="msg" id="faceMsg">Starting Face ID…</div>
+              <div class="switches"><button class="switch" id="toKeypad"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg>Use keypad</button></div>
+            </section>
+
+            <!-- PIN view -->
+            <section class="view pin-view hidden" id="pinView">
+              <div class="pin-title">Enter PIN</div>
+              <div class="dots" id="dots"></div>
+              <div class="pin-msg" id="pinMsg">4–8 digits</div>
+              <div class="keys" id="keys"></div>
+              <button class="switch" id="toFace"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M9 9.5v1M15 9.5v1M12 9v4h-1M9.5 16a4 4 0 0 0 5 0"/></svg>Face ID</button>
+            </section>
+
+            <!-- Welcome overlay -->
+            <div class="welcome" id="welcome">
+              <div class="w-avatar" id="wAvatar"><span class="burst"></span><span class="burst b2"></span></div>
+              <div class="w-hello">Welcome</div>
+              <div class="w-name" id="wName">User</div>
+              <div class="w-sub" id="wSub"></div>
+              <div class="bolt"><i></i></div>
+            </div>
+          </div></div>
+
+          <div class="card-slot" title="Key card slot"></div>
+          <div class="lever-wrap" id="leverWrap"><div class="lever" id="lever"></div><div class="lever-rose" id="rose"><div class="keyhole" id="keyhole" title="Keyhole"><svg viewBox="0 0 20 28"><circle cx="10" cy="9" r="6.5" fill="#6d727a"/><circle cx="10" cy="9" r="5.2" fill="#0c0d0f"/><path d="M7.2 12 H12.8 L14.6 26 H5.4 Z" fill="#0c0d0f"/></svg></div><div class="rose-cap" id="roseCap" title="Lift the cap to use a key"></div></div><div class="mkey" id="key"><svg viewBox="0 0 26 54" width="100%" height="100%"><defs><linearGradient id="gKey" x1="0" x2="1"><stop offset="0" stop-color="#8a6a22"/><stop offset=".45" stop-color="#f3d98f"/><stop offset="1" stop-color="#a47f2c"/></linearGradient></defs><path fill="url(#gKey)" fill-rule="evenodd" d="M13 1a11 11 0 1 1 0 22a11 11 0 1 1 0-22zm0 6.5a4.5 4.5 0 1 0 0 9a4.5 4.5 0 1 0 0-9z"/><rect x="8.5" y="21.5" width="9" height="4.5" rx="1.2" fill="url(#gKey)"/><rect x="11" y="25" width="4" height="29" fill="url(#gKey)"/><rect x="11" y="31" width="4" height="1.2" fill="rgba(0,0,0,.25)"/></svg></div></div>
+        </div>
+        <div class="kick"></div>
+      </div>
+    </div>
+    <div class="spill"></div>
+  </div>
+</div>
+<div class="hint" id="hint"></div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const DENY_MS = 2500, FRAMES_NEEDED = 3, SCAN_IDLE_MS = 120, SCAN_ACTIVE_MS = 15, DETECT_SIZE = 224, MAX_PIN = 8, MIN_PIN = 4;
+  let S = UL.load();
+  let mode = 'face', busy = false, unlocked = false, cooldownUntil = 0;
+  let frames = [], pin = '', fails = 0, lockoutUntil = 0, camOk = false, drexOk = null;
+  let awake = false, doorOpen = false, doorMoving = false, zoomSettle = 0, leaveTimer = 0, lastActivity = 0, mouse = { x: -1, y: -1 };
+  const IDLE_SLEEP_MS = 30000, LEAVE_SLEEP_MS = 1400;
+
+  /* ---------- hotel room behind the door ---------- */
+  function buildRoom() {
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const L = (x1, y1, x2, y2, st, w = 1) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${st}" stroke-width="${w}"/>`;
+    let planks = ''; for (let i = 1; i < 12; i++) planks += L(70 + i * 340 / 12, 720, i * 480 / 12, 1000, 'rgba(0,0,0,.22)');
+    for (let k = 0; k < 9; k++) { const y = 735 + k * k * 3.3; planks += L(0, y, 480, y, 'rgba(0,0,0,.06)'); }
+    let far = '', city = '', x = 132;
+    while (x < 348) { const w = 10 + rnd() * 16, h = 30 + rnd() * 70; far += `<rect x="${x}" y="${486 - h}" width="${w}" height="${h}" fill="#3a4677"/>`; x += w + 1; }
+    x = 130;
+    while (x < 350) {
+      const w = 14 + rnd() * 24, h = 45 + rnd() * 140, top = 486 - h;
+      city += `<rect x="${x}" y="${top}" width="${w}" height="${h}" fill="${rnd() < .5 ? '#161c31' : '#1d2440'}"/>`;
+      for (let wy = top + 5; wy < 482; wy += 6) for (let wx = x + 3; wx < x + w - 3; wx += 5)
+        if (rnd() < .32) city += `<rect x="${wx.toFixed(1)}" y="${wy}" width="2.4" height="3" fill="${rnd() < .8 ? '#ffd98a' : '#bfe3ff'}" opacity="${(.55 + rnd() * .45).toFixed(2)}"/>`;
+      x += w + 2 + rnd() * 4;
+    }
+    let stars = ''; for (let i = 0; i < 22; i++) stars += `<circle cx="${(138 + rnd() * 204).toFixed(1)}" cy="${(246 + rnd() * 80).toFixed(1)}" r="${(.4 + rnd() * .6).toFixed(2)}" fill="#fff" opacity="${(.3 + rnd() * .6).toFixed(2)}"/>`;
+    let tufts = ''; for (let ty = 488; ty < 610; ty += 21) for (let tx = 140 + ((ty / 21) % 2) * 10; tx < 346; tx += 21) tufts += `<circle cx="${tx}" cy="${ty}" r="1.7" fill="rgba(70,50,25,.35)"/>`;
+    const lamp = cx => `
+      <ellipse cx="${cx}" cy="515" rx="95" ry="120" fill="url(#gGlow)" opacity=".75"/>
+      <rect x="${cx - 26}" y="598" width="52" height="92" rx="2" fill="#4a2f1c"/><rect x="${cx - 28}" y="594" width="56" height="8" rx="2" fill="#6f4a2c"/>
+      <line x1="${cx - 22}" y1="640" x2="${cx + 22}" y2="640" stroke="rgba(0,0,0,.35)"/><circle cx="${cx}" cy="622" r="1.8" fill="#c9a24a"/><circle cx="${cx}" cy="664" r="1.8" fill="#c9a24a"/>
+      <rect x="${cx - 4}" y="556" width="8" height="38" fill="#c9a24a"/><ellipse cx="${cx}" cy="594" rx="12" ry="3" fill="#a8842f"/>
+      <path d="M${cx - 20} 518 H${cx + 20} L${cx + 27} 558 H${cx - 27} Z" fill="#fbefd4"/>
+      <path d="M${cx - 27} 558 H${cx + 27} L${cx + 22} 552 H${cx - 22} Z" fill="#ffe3a8" opacity=".9"/>`;
+    $('room').innerHTML = `<svg viewBox="0 0 480 1000" preserveAspectRatio="xMidYMid slice" aria-label="Hotel room">
+      <defs>
+        <linearGradient id="gCeil" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9cdb8"/><stop offset="1" stop-color="#f4ecdf"/></linearGradient>
+        <linearGradient id="gBack" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eadbc0"/><stop offset="1" stop-color="#d4bf9b"/></linearGradient>
+        <linearGradient id="gLeft" x1="0" x2="1"><stop offset="0" stop-color="#9c8461"/><stop offset="1" stop-color="#cfb995"/></linearGradient>
+        <linearGradient id="gRight" x1="1" x2="0"><stop offset="0" stop-color="#937b59"/><stop offset="1" stop-color="#c9b38e"/></linearGradient>
+        <linearGradient id="gFloor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9a6a42"/><stop offset="1" stop-color="#4f2e18"/></linearGradient>
+        <linearGradient id="gSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0e1a42"/><stop offset=".5" stop-color="#34447f"/><stop offset=".82" stop-color="#c47b5f"/><stop offset="1" stop-color="#f6b766"/></linearGradient>
+        <linearGradient id="gDrape" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="13" y2="0" spreadMethod="repeat"><stop offset="0" stop-color="#143a33"/><stop offset=".5" stop-color="#2b6a5b"/><stop offset="1" stop-color="#143a33"/></linearGradient>
+        <linearGradient id="gSheer" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="7" y2="0" spreadMethod="repeat"><stop offset="0" stop-color="#fff" stop-opacity=".18"/><stop offset=".5" stop-color="#fff" stop-opacity=".45"/><stop offset="1" stop-color="#fff" stop-opacity=".18"/></linearGradient>
+        <linearGradient id="gHead" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9c6a2"/><stop offset="1" stop-color="#b9a27c"/></linearGradient>
+        <linearGradient id="gDuvet" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3eee5"/><stop offset="1" stop-color="#fffdf9"/></linearGradient>
+        <linearGradient id="gBedFront" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6f1e8"/><stop offset="1" stop-color="#d8cfbf"/></linearGradient>
+        <radialGradient id="gGlow"><stop offset="0" stop-color="#ffd38f" stop-opacity=".9"/><stop offset=".45" stop-color="#ffcf8a" stop-opacity=".35"/><stop offset="1" stop-color="#ffcf8a" stop-opacity="0"/></radialGradient>
+        <radialGradient id="gVig" cx=".5" cy=".55" r=".78"><stop offset=".5" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#1a0c04" stop-opacity=".6"/></radialGradient>
+        <linearGradient id="gArt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e09a62"/><stop offset=".5" stop-color="#c4553f"/><stop offset="1" stop-color="#244f5e"/></linearGradient>
+        <clipPath id="cWin"><rect x="136" y="240" width="208" height="246"/></clipPath>
+      </defs>
+      <polygon points="0,0 480,0 410,190 70,190" fill="url(#gCeil)"/>
+      <ellipse cx="240" cy="96" rx="110" ry="46" fill="url(#gGlow)" opacity=".55"/><ellipse cx="240" cy="96" rx="20" ry="5" fill="#fffaf0"/>
+      <polygon points="0,0 70,190 70,720 0,1000" fill="url(#gLeft)"/>
+      <polygon points="480,0 410,190 410,720 480,1000" fill="url(#gRight)"/>
+      <rect x="70" y="190" width="340" height="530" fill="url(#gBack)"/>
+      <rect x="70" y="190" width="340" height="7" fill="#f6efe2"/>
+      <polygon points="14,300 56,330 56,472 14,505" fill="#b8933f"/><polygon points="19,310 51,337 51,464 19,494" fill="url(#gArt)"/>
+      <polygon points="0,975 70,706 70,720 0,1000" fill="#e9e0cf"/><polygon points="480,975 410,706 410,720 480,1000" fill="#dcd1bd"/>
+      <polygon points="0,1000 70,720 410,720 480,1000" fill="url(#gFloor)"/>${planks}
+      <rect x="70" y="706" width="340" height="14" fill="#efe6d6"/>
+      <rect x="126" y="230" width="228" height="266" fill="#2a2420"/>
+      <rect x="136" y="240" width="208" height="246" fill="url(#gSky)"/>
+      <g clip-path="url(#cWin)">${stars}${far}${city}</g>
+      <rect x="238" y="240" width="4" height="246" fill="#2a2420"/>
+      <rect x="122" y="492" width="236" height="8" fill="#f1e9da"/>
+      <rect x="132" y="240" width="38" height="466" fill="url(#gSheer)"/><rect x="310" y="240" width="38" height="466" fill="url(#gSheer)"/>
+      <polygon points="92,220 142,220 136,706 84,706" fill="url(#gDrape)"/><polygon points="338,220 388,220 396,706 344,706" fill="url(#gDrape)"/>
+      <rect x="86" y="214" width="308" height="5" rx="2" fill="#c9a24a"/><circle cx="86" cy="216.5" r="5" fill="#c9a24a"/><circle cx="394" cy="216.5" r="5" fill="#c9a24a"/>
+      ${lamp(100)}${lamp(380)}
+      <polygon points="40,812 440,812 478,1000 2,1000" fill="#c9b691"/><polygon points="58,826 422,826 452,992 28,992" fill="none" stroke="#8d7656" stroke-width="3"/>
+      <rect x="124" y="468" width="232" height="152" rx="12" fill="url(#gHead)" stroke="#a48d68" stroke-width="2"/>${tufts}
+      <rect x="138" y="546" width="100" height="60" rx="20" fill="#fdfaf4" stroke="rgba(0,0,0,.08)"/><rect x="242" y="546" width="100" height="60" rx="20" fill="#fdfaf4" stroke="rgba(0,0,0,.08)"/>
+      <rect x="168" y="574" width="66" height="40" rx="10" fill="#1f5a4b"/><rect x="246" y="574" width="66" height="40" rx="10" fill="#1f5a4b"/>
+      <rect x="216" y="584" width="48" height="30" rx="8" fill="#c9a24a"/>
+      <polygon points="118,612 362,612 410,762 70,762" fill="url(#gDuvet)"/>
+      <path d="M112 632 Q240 642 368 632" stroke="rgba(0,0,0,.07)" stroke-width="3" fill="none"/>
+      <polygon points="93,690 387,690 399,728 81,728" fill="#1f5a4b"/>
+      <line x1="91" y1="696" x2="389" y2="696" stroke="#c9a24a" stroke-width="1.5"/><line x1="83" y1="722" x2="397" y2="722" stroke="#c9a24a" stroke-width="1.5"/>
+      <rect x="70" y="762" width="340" height="70" fill="url(#gBedFront)"/><rect x="70" y="832" width="340" height="22" fill="#cfc4b1"/>
+      <ellipse cx="240" cy="860" rx="196" ry="9" fill="rgba(0,0,0,.35)"/>
+      <ellipse cx="442" cy="985" rx="34" ry="6" fill="rgba(0,0,0,.35)"/>
+      <path d="M420 898 H466 L460 984 H426 Z" fill="#ebe4d8"/><path d="M420 898 H466 L465 906 H421 Z" fill="#d4ccbe"/>
+      <g fill="#2f6b3f"><ellipse cx="430" cy="852" rx="9" ry="34" transform="rotate(-22 430 852)"/><ellipse cx="456" cy="848" rx="9" ry="36" transform="rotate(20 456 848)"/><ellipse cx="443" cy="836" rx="8" ry="40"/></g>
+      <g fill="#3f8a52"><ellipse cx="420" cy="872" rx="7" ry="26" transform="rotate(-48 420 872)"/><ellipse cx="466" cy="870" rx="7" ry="26" transform="rotate(46 466 870)"/></g>
+      <rect width="480" height="1000" fill="url(#gVig)"/>
+    </svg>`;
+  }
+  buildRoom();
+
+  /* ---------- basics ---------- */
+  function applyRoom() { $('roomPlaque').textContent = S.room; $('roomScreen').textContent = S.room; document.title = `Room ${S.room} · Unlockurr`; }
+  applyRoom();
+  window.addEventListener('storage', e => { if (e.key === UL.KEY) { S = UL.load(); applyRoom(); frames = []; } });
+  const tick = () => { $('clock').textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
+  tick(); setInterval(tick, 10000);
+  function led(c) { $('led').className = 'led' + (c ? ' on-' + c : ''); }
+
+  async function checkDrex() {
+    const chip = $('drexChip');
+    try {
+      const r = await fetch('/api/status', { cache: 'no-store' }); const j = await r.json();
+      drexOk = !!j.drex_key_configured;
+      chip.className = 'chip ' + (drexOk ? 'ok' : 'bad');
+      chip.title = drexOk ? `Drex ready (${j.model})` : 'Drex API key missing on server — face unlock disabled';
+    } catch { drexOk = false; chip.className = 'chip bad'; chip.title = 'Lock server offline — run server.py'; }
+  }
+  checkDrex(); setInterval(checkDrex, 30000);
+
+  /* ---------- views ---------- */
+  function setMode(m) {
+    mode = m;
+    $('faceView').classList.toggle('hidden', m !== 'face');
+    $('pinView').classList.toggle('hidden', m !== 'pin');
+    frames = []; setProgress(0);
+    if (m === 'pin') { pin = ''; renderDots(); setPinMsg(lockoutMsg() || '4–8 digits'); }
+  }
+  $('toKeypad').onclick = () => setMode('pin');
+  $('toFace').onclick = () => setMode('face');
+
+  function setFaceMsg(text, sub = '', bad = false) {
+    const m = $('faceMsg'); m.className = 'msg' + (bad ? ' bad' : '');
+    m.innerHTML = ''; m.append(text); if (sub) { const s = document.createElement('small'); s.textContent = sub; m.append(s); }
+  }
+  function setRing(state) { const r = $('ring'); r.classList.remove('idle', 'verifying', 'denied', 'unrecognized'); if (state) r.classList.add(state); if (!camOk) r.classList.add('nocam'); }
+  function setProgress(f) { $('prog').style.strokeDasharray = `${(f * 314).toFixed(1)} 314`; }
+
+  /* ---------- keypad ---------- */
+  const KEYS = ['1','2','3','4','5','6','7','8','9','back','0','go'];
+  const BACK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1zM17 9l-6 6M11 9l6 6"/></svg>';
+  const GO_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg>';
+  const keyEls = {};
+  for (const k of KEYS) {
+    const b = document.createElement('button');
+    b.className = 'key' + (k === 'back' ? ' fn' : k === 'go' ? ' go' : '');
+    b.innerHTML = k === 'back' ? BACK_SVG : k === 'go' ? GO_SVG : k;
+    b.setAttribute('aria-label', k === 'back' ? 'Delete' : k === 'go' ? 'Enter' : k);
+    b.addEventListener('pointerdown', e => { e.preventDefault(); press(k); });
+    $('keys').appendChild(b); keyEls[k] = b;
+  }
+  function renderDots(bad = false) {
+    const d = $('dots'); d.innerHTML = ''; d.classList.toggle('bad', bad);
+    const n = Math.max(MIN_PIN, Math.min(MAX_PIN, pin.length + (pin.length >= MIN_PIN && pin.length < MAX_PIN ? 1 : 0)));
+    for (let i = 0; i < n; i++) {
+      const s = document.createElement('span');
+      s.className = 'dot' + (i < pin.length ? ' f' : i >= MIN_PIN ? ' opt' : '');
+      d.appendChild(s);
+    }
+    keyEls.go.disabled = pin.length < MIN_PIN;
+  }
+  function setPinMsg(t, bad = false) { const m = $('pinMsg'); m.textContent = t; m.className = 'pin-msg' + (bad ? ' bad' : ''); }
+  function lockoutMsg() { const s = Math.ceil((lockoutUntil - Date.now()) / 1000); return s > 0 ? `Too many attempts · wait ${s}s` : ''; }
+
+  function press(k) {
+    if (mode !== 'pin' || !awake || unlocked || busy) return;
+    lastActivity = Date.now();
+    if (lockoutMsg()) { setPinMsg(lockoutMsg(), true); return; }
+    if (k === 'back') pin = pin.slice(0, -1);
+    else if (k === 'go') return submitPin();
+    else if (pin.length < MAX_PIN) pin += k;
+    setPinMsg(pin.length ? (pin.length < MIN_PIN ? `${MIN_PIN - pin.length} more digit${MIN_PIN - pin.length > 1 ? 's' : ''}` : 'Press ✓ to unlock') : '4–8 digits');
+    renderDots();
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && awake && !unlocked) return sleep();
+    if (!awake || unlocked) return;
+    const k = /^\d$/.test(e.key) ? e.key : e.key === 'Backspace' ? 'back' : e.key === 'Enter' ? 'go' : null;
+    if (!k) return;
+    // typing a digit on the Face ID screen opens the keypad and enters it
+    if (mode !== 'pin') { if (!/^\d$/.test(k)) return; setMode('pin'); }
+    keyEls[k]?.classList.add('press'); setTimeout(() => keyEls[k]?.classList.remove('press'), 120);
+    press(k);
+  });
+
+  async function submitPin() {
+    if (pin.length < MIN_PIN) return;
+    busy = true;
+    const h = await UL.hashPin(pin);
+    S = UL.load();
+    const user = S.users.find(u => (u.pins || []).some(p => p.hash === h));
+    pin = '';
+    busy = false;
+    if (user && !UL.accessStatus(user).active) {
+      // right PIN, but outside the user's access period: deny without counting it as a wrong PIN
+      fails = 0; logAccessDenied(user, 'PIN');
+      led('red'); setTimeout(() => led(''), 900); renderDots(true); setTimeout(() => renderDots(), 600);
+      return setPinMsg(accessDenyText(user), true);
+    }
+    if (user) { fails = 0; renderDots(); return unlock(user, 'PIN'); }
+    fails++;
+    UL.addLog({ kind: 'deny', method: 'PIN', detail: 'Incorrect PIN' });
+    led('red'); setTimeout(() => led(''), 900);
+    renderDots(true);
+    if (fails >= 5) { lockoutUntil = Date.now() + 30000; fails = 0; }
+    setPinMsg(lockoutMsg() || `Incorrect PIN · ${5 - fails} tries left`, true);
+    setTimeout(() => renderDots(), 600);
+  }
+  setInterval(() => { if (mode === 'pin' && lockoutUntil && lockoutMsg()) setPinMsg(lockoutMsg(), true); else if (lockoutUntil && !lockoutMsg()) { lockoutUntil = 0; if (mode === 'pin') setPinMsg('4–8 digits'); } }, 1000);
+  renderDots();
+
+  /* ---------- unlock animation ---------- */
+  function unlock(user, method, extra = '') {
+    unlocked = true; frames = []; setProgress(0);
+    UL.addLog({ kind: 'unlock', method, userId: user.id, name: UL.fullName(user), detail: extra });
+    const wa = $('wAvatar'); wa.querySelector('.avatar')?.remove();
+    wa.prepend(UL.avatar(user));
+    const check = document.createElement('div'); check.className = 'w-check';
+    check.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#04140e" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+    wa.querySelector('.w-check')?.remove(); wa.appendChild(check);
+    $('wName').textContent = UL.fullName(user);
+    $('wSub').textContent = method === 'Face ID' ? 'Face ID · verified by Drex' : method === 'Key' ? 'Unlocked with mechanical key' : 'Unlocked with PIN';
+    const w = $('welcome'); w.classList.remove('show'); void w.offsetWidth; w.classList.add('show');
+    led('green'); clearTimeout(leaveTimer); hint('');
+    setTimeout(() => $('lever').classList.add('down'), 200);
+    setTimeout(() => zoom(false), 1400);
+    setTimeout(openDoor, 2500);
+  }
+
+  /* ---------- door ---------- */
+  function openDoor() {
+    doorMoving = true; document.body.classList.add('door-open'); $('door').classList.add('open');
+    setTimeout(() => {
+      doorMoving = false; doorOpen = true;
+      awake = false; document.body.classList.remove('awake'); $('welcome').classList.remove('show');
+      defaultHint();
+    }, 1800);
+  }
+  function closeDoor() {
+    if (!doorOpen || doorMoving) return;
+    doorOpen = false; doorMoving = true; hint('');
+    $('door').classList.remove('open'); document.body.classList.remove('door-open');
+    setTimeout(() => $('lever').classList.remove('down'), 400);
+    setTimeout(() => { doorMoving = false; autoLock(); }, 1750);
+  }
+  function autoLock() {
+    $('key').classList.remove('use'); $('leverWrap').classList.remove('keyed'); showKeyhole(false);
+    unlocked = false; cooldownUntil = Date.now() + 1500; setMode('face');
+    // two short red blinks: bolt thrown
+    led('red'); setTimeout(() => led(''), 300); setTimeout(() => led('red'), 520); setTimeout(() => led(''), 820);
+    hint('Door closed · locked'); setTimeout(defaultHint, 2400);
+  }
+  $('opening').addEventListener('click', () => { if (doorOpen) closeDoor(); });
+
+  /* ---------- wake / sleep / zoom ---------- */
+  const lockEl = $('lock');
+  const canHover = matchMedia('(hover: hover)').matches;
+  function hint(t) { const h = $('hint'); if (t) h.textContent = t; h.classList.toggle('show', !!t); }
+  function defaultHint() {
+    hint(doorOpen ? 'Click the door to close it' : awake || unlocked ? '' : canHover ? 'Hover over the lock to wake it' : 'Tap the lock to wake it');
+  }
+  const SCENE_ZOOM = 1.5;
+  function zoom(on) {
+    const sc = $('scene');
+    if (!on) { sc.style.transform = ''; lockEl.style.transform = ''; document.body.classList.remove('zoomed'); return; }
+    // measure at rest (no zoom), so repeated calls / resizes stay exact
+    const prevS = sc.style.transform, prevL = lockEl.style.transform;
+    sc.style.transition = lockEl.style.transition = 'none'; sc.style.transform = lockEl.style.transform = '';
+    const r = lockEl.getBoundingClientRect(), d = $('door').getBoundingClientRect();
+    const w = lockEl.offsetWidth, h = lockEl.offsetHeight;
+    sc.style.transform = prevS; lockEl.style.transform = prevL; void sc.offsetWidth;
+    sc.style.transition = lockEl.style.transition = '';
+    const vw = innerWidth, vh = innerHeight;
+    const O = { x: r.left + r.width / 2, y: r.top + r.height / 2 };          // zoom the corridor toward the lock
+    const T = Math.min(vh * .9 / h, vw * .9 / w);                            // on-screen scale of the lock when focused
+    const L = T / SCENE_ZOOM;                                                // lock's own scale inside the zoomed scene
+    const P0 = { x: d.left + lockEl.offsetLeft + w, y: d.top + lockEl.offsetTop };   // transform-origin (right top) in scene coords
+    const want = { x: O.x + (vw / 2 - O.x) / SCENE_ZOOM, y: O.y + (vh / 2 - O.y) / SCENE_ZOOM };
+    const tx = want.x - P0.x + L * w / 2, ty = want.y - P0.y - L * h / 2;
+    sc.style.transformOrigin = `${O.x}px ${O.y}px`;
+    sc.style.transform = `scale(${SCENE_ZOOM})`;
+    lockEl.style.transform = `translate(${tx}px, ${ty}px) scale(${L})`;
+    document.body.classList.add('zoomed');
+  }
+  function sizeLock() { lockEl.style.setProperty('--lk', ($('door').clientWidth * .16 / lockEl.offsetWidth).toFixed(4)); }
+  sizeLock();
+  addEventListener('resize', () => { sizeLock(); if (awake && !unlocked) zoom(true); });
+  function wake() {
+    if (awake || unlocked || doorOpen || doorMoving) return;
+    awake = true; lastActivity = Date.now(); zoomSettle = Date.now() + 1100;
+    document.body.classList.add('awake'); zoom(true);
+    setMode('face'); setRing('idle'); idleMsg(); defaultHint();
+    setTimeout(checkLeave, 1150);
+  }
+  function sleep() {
+    if (!awake || unlocked) return;
+    awake = false; clearTimeout(leaveTimer); document.body.classList.remove('awake'); zoom(false);
+    setMode('face'); led(''); showKeyhole(false); defaultHint();
+  }
+  /* ---------- mechanical key override ---------- */
+  const KEY_AVATAR = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#15402f"/><g transform="translate(32 32) rotate(45) translate(-13 -27)"><circle cx="13" cy="12" r="10" fill="none" stroke="#e9c870" stroke-width="5"/><rect x="11" y="21" width="4.5" height="30" fill="#e9c870"/><rect x="15" y="40" width="6" height="4" fill="#e9c870"/><rect x="15" y="46" width="4" height="4" fill="#e9c870"/></g></svg>');
+  const MASTER_KEY = { id: 'master-key', first: 'Master', last: 'Key', pfp: KEY_AVATAR };
+  function showKeyhole(on) { $('leverWrap').classList.toggle('open-cap', on); }
+  function revealKey() {
+    if (!awake || unlocked || busy) return;
+    lastActivity = Date.now(); if (mode !== 'face') setMode('face');
+    showKeyhole(true); setFaceMsg('Key override', 'Tap the keyhole on the handle');
+  }
+  $('roseCap').addEventListener('click', e => { if (awake) { e.stopPropagation(); revealKey(); } });
+  $('keyhole').addEventListener('click', e => {
+    if (!awake || unlocked || busy || !$('leverWrap').classList.contains('open-cap')) return;
+    e.stopPropagation(); busy = true; lastActivity = Date.now(); clearTimeout(leaveTimer);
+    frames = []; setProgress(0); setRing('idle'); setFaceMsg('Key inserted…', 'Turning the cylinder');
+    $('leverWrap').classList.add('keyed');
+    const k = $('key'); k.classList.remove('use'); void k.offsetWidth; k.classList.add('use');
+    setTimeout(() => { busy = false; unlock(MASTER_KEY, 'Key', 'Mechanical key override'); }, 1350);
+  });
+
+  function pointerOverLock() { const el = document.elementFromPoint(mouse.x, mouse.y); return !!el && lockEl.contains(el); }
+  function checkLeave() {
+    if (!awake || busy || unlocked || !canHover || mouse.x < 0) return;
+    if (Date.now() < zoomSettle) return void setTimeout(checkLeave, zoomSettle - Date.now() + 20);
+    if (!pointerOverLock()) { clearTimeout(leaveTimer); leaveTimer = setTimeout(() => { if (!pointerOverLock()) sleep(); }, LEAVE_SLEEP_MS); }
+  }
+  addEventListener('pointermove', e => { if (e.pointerType === 'mouse') { mouse = { x: e.clientX, y: e.clientY }; if (awake && lockEl.contains(e.target)) lastActivity = Date.now(); } });
+  lockEl.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') { clearTimeout(leaveTimer); wake(); } });
+  lockEl.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') checkLeave(); });
+  lockEl.addEventListener('click', e => { if (!awake && !doorOpen && !doorMoving) { e.stopPropagation(); wake(); } });
+  lockEl.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !awake) { e.preventDefault(); wake(); } });
+  document.addEventListener('pointerdown', e => {
+    if (awake && !unlocked && !lockEl.contains(e.target) && !e.target.closest('.mgr-link')) sleep();
+  });
+  setInterval(() => { if (awake && !busy && !unlocked && Date.now() - lastActivity > IDLE_SLEEP_MS) sleep(); }, 1000);
+  defaultHint();
+
+  /* ---------- Face ID ---------- */
+  // who tried, how (PIN / Face ID), and when their access ended or starts, e.g. "Access expired Nov 13, 12:14 PM"
+  const ACCESS_LOG_REPEAT_MS = 30000; let lastAccessLog = { key: '', t: 0 };
+  function logAccessDenied(u, method) {
+    const st = UL.accessStatus(u).state, a = u.access || {};
+    // someone standing at the door is re-checked every few seconds: log the same person/method/reason once per 30 s
+    const key = `${u.id}|${method}|${st}`;
+    if (key === lastAccessLog.key && Date.now() - lastAccessLog.t < ACCESS_LOG_REPEAT_MS) return;
+    lastAccessLog = { key, t: Date.now() };
+    const when = st === 'expired' ? `Access expired ${UL.fmtWhen(a.end)}` : st === 'upcoming' ? `Access starts ${UL.fmtWhen(a.start)}` : 'Access not active';
+    UL.addLog({ kind: 'deny', reason: 'access', method, userId: u.id, name: UL.fullName(u), category: u.category || '', detail: when });
+  }
+  function accessDenyText(u) {
+    const st = UL.accessStatus(u).state, a = u.access || {};
+    return st === 'upcoming' ? `Access starts ${UL.fmtWhen(a.start)}` : st === 'expired' ? 'Access expired' : 'Access not active';
+  }
+  function faceNotRecognized(detail, flash = true) {
+    if (flash) { led('red'); setTimeout(() => led(''), 1200); }
+    $('denyText').textContent = 'Face not recognized';
+    setRing('denied'); $('ring').classList.add('unrecognized');
+    setTimeout(() => { if (!unlocked && Date.now() >= cooldownUntil - 50) setRing('idle'); }, DENY_MS);
+    setFaceMsg('Face not recognized', 'Try again or use keypad', true);
+    UL.addLog({ kind: 'deny', method: 'Face ID', detail });
+    cooldownUntil = Date.now() + DENY_MS;
+  }
+  function denyAccess(user) {
+    led('red'); setTimeout(() => led(''), 1200);
+    $('denyText').textContent = accessDenyText(user);
+    setRing('denied'); $('ring').classList.add('unrecognized');
+    setTimeout(() => { if (!unlocked && Date.now() >= cooldownUntil - 50) setRing('idle'); }, DENY_MS);
+    setFaceMsg(`Hi ${user.first || UL.fullName(user)}`, accessDenyText(user), true);
+    logAccessDenied(user, 'Face ID');
+    cooldownUntil = Date.now() + DENY_MS;
+  }
+  // Fast path for refusals only: if one frame already clearly matches a user whose access isn't active,
+  // and no active user is anywhere close, say so immediately instead of waiting for Drex. Never unlocks.
+  const QUICK_DENY_DIST = 0.5, QUICK_DENY_MARGIN = 0.08;
+  function inactiveMatch(d) {
+    let best = null, bestActive = Infinity;
+    for (const u of enrolled()) {
+      const dist = Math.min(...u.faces.map(f => UL.dist(d, f.d)));
+      if (UL.accessStatus(u).active) bestActive = Math.min(bestActive, dist);
+      else if (!best || dist < best.dist) best = { u, dist };
+    }
+    return best && best.dist <= QUICK_DENY_DIST && bestActive - best.dist >= QUICK_DENY_MARGIN ? best.u : null;
+  }
+  function enrolled() { return S.users.filter(u => (u.faces || []).length); }
+  function idleMsg() {
+    if (!camOk) return setFaceMsg('Camera unavailable', 'Use the keypad to unlock', true);
+    if (drexOk === false) return setFaceMsg('Face ID offline', 'Drex unavailable · use keypad', true);
+    setFaceMsg('Look at the camera', 'Face ID by Drex');
+  }
+
+  async function startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+      $('video').srcObject = stream; await $('video').play(); camOk = true;
+    } catch (e) { camOk = false; console.warn('camera', e); }
+    setRing('idle');
+  }
+
+  async function scanLoop() {
+    try {
+      const v = $('video');
+      if (awake && mode === 'face' && !unlocked && !busy && camOk && !document.hidden && Date.now() > cooldownUntil && v.readyState >= 2 && drexOk !== false) {
+        const r = await UL.describe(v, DETECT_SIZE);
+        if (r) {
+          lastActivity = Date.now();
+          const blocked = inactiveMatch(r.d);
+          if (!enrolled().length) { frames = []; setProgress(0); faceNotRecognized('No enrolled faces'); }
+          else if (blocked) { frames = []; setProgress(0); denyAccess(blocked); }
+          else {
+            frames.push({ d: r.d, score: r.score, w: r.box.width / v.videoWidth });
+            if (frames.length > FRAMES_NEEDED) frames.shift();
+            setRing(null); setProgress(frames.length / FRAMES_NEEDED);
+            setFaceMsg('Hold still…', 'Scanning face');
+            if (frames.length === FRAMES_NEEDED) await verify(frames.splice(0));
+          }
+        } else {
+          if (frames.length) { frames = []; setProgress(0); }
+          setRing('idle'); idleMsg();
+        }
+      } else if (awake && mode === 'face' && !unlocked && !busy && Date.now() > cooldownUntil) { setRing('idle'); idleMsg(); }
+    } catch (e) { console.error(e); }
+    setTimeout(scanLoop, frames.length ? SCAN_ACTIVE_MS : SCAN_IDLE_MS);
+  }
+
+
+  async function verify(fs) {
+    busy = true; setRing('verifying'); led('blue');
+    setFaceMsg('Verifying…', 'Drex is checking your face');
+    S = UL.load();
+    const cands = enrolled().map(u => {
+      const per = fs.map(f => Math.min(...u.faces.map(s => UL.dist(f.d, s.d))));
+      return { id: u.id, name: UL.fullName(u), samples: u.faces.length,
+        mean: per.reduce((a, b) => a + b, 0) / per.length, best: Math.min(...per), worst: Math.max(...per) };
+    }).sort((a, b) => a.mean - b.mean).slice(0, 8);
+    const scores = fs.map(f => f.score);
+    const body = { room: S.room, candidates: cands, capture: {
+      frames: fs.length, detection: scores.reduce((a, b) => a + b, 0) / scores.length,
+      min_detection: Math.min(...scores), face_width: fs.reduce((a, f) => a + f.w, 0) / fs.length } };
+
+    const res = await fetch('/api/identify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(r => r.json()).catch(() => ({ ok: false, error: 'drex_unavailable', message: 'Lock server unreachable' }));
+    busy = false; setProgress(0);
+
+    if (res.ok && res.unlock) {
+      const user = S.users.find(u => u.id === res.user_id);
+      if (user && !UL.accessStatus(user).active) return denyAccess(user);
+      if (user) return unlock(user, 'Face ID', `Drex p=${res.probability} · ${res.request_id}`);
+    }
+    led('red'); setTimeout(() => led(''), 1200);
+    if (!res.ok) {
+      setRing('denied'); setTimeout(() => setRing('idle'), 500);
+      setFaceMsg('Face ID unavailable', res.error === 'drex_unavailable' ? 'Drex offline · use keypad' : 'Error · use keypad', true);
+      UL.addLog({ kind: 'deny', method: 'Face ID', detail: `Drex unavailable: ${res.message || res.error}` });
+      cooldownUntil = Date.now() + 8000; checkDrex();
+    } else {
+      faceNotRecognized(`${res.reason} · ${res.request_id}`, false);
+    }
+  }
+
+
+  (async () => {
+    await startCamera();
+    if (!camOk) { idleMsg(); return; }
+    setFaceMsg('Loading Face ID…', 'Preparing face models');
+    try { await UL.loadFace(); } catch (e) { console.error(e); setFaceMsg('Face models failed to load', 'Use the keypad', true); return; }
+    // compile every model's GPU programs now, while the lock is asleep, so waking it doesn't freeze the page
+    setFaceMsg('Starting Face ID…', 'Warming up');
+    try { await UL.warmUp([DETECT_SIZE], $('video')); } catch (e) { console.warn('face warm-up', e); }
+    idleMsg(); scanLoop();
+  })();
+})();
+</script>
+</body>
+</html>

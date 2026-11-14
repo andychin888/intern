@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unlockurr Lock Manager</title>
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/dist/face-api.js"></script>
+<script src="shared.js?v=4"></script>
+<style>
+  :root {
+    --bg: #f3f5f9; --surface: #ffffff; --surface-2: #f7f8fb; --border: #e2e6ee; --text: #121826; --muted: #667085;
+    --accent: #2f5fe0; --accent-ink: #fff; --ok: #0f9d63; --bad: #d92d44; --navy: #10265f; --logo-hi: #000; --logo-lo: #16a34a; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 6px 20px rgba(16,24,40,.06);
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #0c1018; --surface: #141a25; --surface-2: #19202d; --border: #273042; --text: #e7ebf3; --muted: #93a0b5;
+    --accent: #5b8bff; --accent-ink: #fff; --ok: #33c28a; --bad: #ff6378; --shadow: 0 1px 2px rgba(0,0,0,.4); --logo-hi: #fff; --logo-lo: #3ddc84; } }
+  :root[data-theme="dark"] { --bg: #0c1018; --surface: #141a25; --surface-2: #19202d; --border: #273042; --text: #e7ebf3; --muted: #93a0b5; --accent: #5b8bff; --ok: #33c28a; --bad: #ff6378; --shadow: 0 1px 2px rgba(0,0,0,.4); --logo-hi: #fff; --logo-lo: #3ddc84; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; }
+  button, input { font: inherit; color: inherit; }
+  header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 14px; padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; padding: 4px 8px 4px 4px; margin: -4px 0 -4px -4px; border: 0; border-radius: 12px;
+    background: transparent; cursor: pointer; flex: none; transition: background .15s; }
+  .brand:hover { background: var(--surface-2); }
+  .brand:active .brand-mark { transform: scale(.95); }
+  .brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .brand-mark { position: relative; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex: none;
+    background: linear-gradient(150deg, #3ddc84 0%, #16a34a 55%, #0d7a37 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.35), inset 0 -1px 0 rgba(0,0,0,.25), 0 1px 2px rgba(16,24,40,.18), 0 4px 10px rgba(22,163,74,.28);
+    transition: transform .15s; }
+  .brand-mark svg { width: 22px; height: 22px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.35)); }
+  .brand-word { font: 700 19px/1 -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif; letter-spacing: -.02em;
+    color: var(--logo-hi); }
+  .brand-word span { color: inherit; }
+  .hdr-div { width: 1px; height: 28px; background: var(--border); flex: none; }
+  header h1 { font-size: 15px; font-weight: 600; margin: 0; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  header .spacer { flex: 1; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--surface); padding: 7px 12px; border-radius: 8px; cursor: pointer; text-decoration: none; white-space: nowrap; }
+  .btn:hover { background: var(--surface-2); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.danger { color: var(--bad); }
+  .btn.sm { padding: 4px 9px; font-size: 12.5px; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px; display: grid; grid-template-columns: 340px 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; padding: 16px; } header { padding: 10px 16px; flex-wrap: wrap; } }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
+  .card > h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0; padding: 14px 16px 10px; display: flex; align-items: center; justify-content: space-between; }
+  .card .body { padding: 0 16px 16px; }
+  .stack { display: grid; gap: 20px; }
+  .guest { display: flex; align-items: center; gap: 12px; padding: 10px 16px; cursor: pointer; border-top: 1px solid var(--border); }
+  .guest:hover { background: var(--surface-2); } .guest.sel { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .guest .meta { flex: 1; min-width: 0; } .guest .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .guest .tags { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 3px; }
+  .tag { white-space: nowrap; font-size: 11.5px; padding: 1px 7px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); }
+  .tag.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+  .empty { padding: 26px 16px; text-align: center; color: var(--muted); border-top: 1px solid var(--border); }
+  .avatar { border-radius: 50%; display: grid; place-items: center; overflow: hidden; color: #fff; font-weight: 600; flex: none; }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .av40 { width: 40px; height: 40px; font-size: 15px; } .av96 { width: 96px; height: 96px; font-size: 34px; }
+
+  .editor .body { display: grid; gap: 22px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; } .row > label { flex: 1 1 180px; }
+  label.f { display: grid; gap: 5px; font-size: 12.5px; color: var(--muted); }
+  .req { color: var(--bad); font-weight: 600; }
+  input[type=text], input[type=password], input.in { width: 100%; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-size: 14px; }
+  input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent); border-color: var(--accent); }
+  .sect h3 { font-size: 14px; margin: 0 0 4px; } .sect p.hint { margin: 0 0 10px; color: var(--muted); font-size: 12.5px; }
+  .pfp-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .tag.warn { color: #b45309; border-color: color-mix(in srgb, #f59e0b 45%, var(--border)); background: color-mix(in srgb, #f59e0b 12%, transparent); }
+  .tag.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--border)); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+  .h2-click { position: relative; cursor: pointer; border-radius: 16px 16px 0 0; transition: background .15s; }
+  .h2-click:hover { background: var(--surface-2); color: var(--text); }
+  .h2-link { all: unset; } .h2-link::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+  .h2-link:focus-visible::after { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .h2-click .tag { position: relative; pointer-events: none; }
+  .cat-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+  .cat-chip { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 99px; background: var(--surface-2); font-size: 12.5px; overflow: hidden; }
+  .cat-chip.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+  .cat-chip button { all: unset; cursor: pointer; padding: 3px 4px 3px 10px; }
+  .cat-chip button.x { display: grid; place-items: center; padding: 3px 8px 3px 5px; color: var(--muted); }
+  .cat-chip button.x:hover { color: var(--bad); }
+  .cat-chip button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 99px; }
+
+  .ov { padding: 4px 16px 16px; } .ov-h { display: flex; align-items: baseline; justify-content: space-between; padding: 14px 0 8px; }
+  .ov-h b { font-size: 15px; } .ov-h span { color: var(--muted); font-size: 12.5px; }
+  .ov-row { display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 11px; margin-top: 8px; cursor: pointer; background: var(--surface); }
+  .ov-row:hover { background: var(--surface-2); } .ov-row .nm { font-weight: 600; } .ov-row .sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .ov-row .tags { display: flex; flex-wrap: wrap; gap: 4px 6px; justify-content: flex-end; }
+  .seg { display: inline-flex; padding: 3px; gap: 3px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); }
+  .seg label { position: relative; padding: 6px 14px; border-radius: 7px; font-size: 13px; cursor: pointer; color: var(--muted); }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label:has(input:checked) { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(16,24,40,.12); }
+  .seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #accRange { margin-top: 10px; } #accRange.hidden { display: none; }
+  input[type=datetime-local].in { padding: 8px 10px; }
+  .pin-add { display: flex; gap: 8px; flex-wrap: wrap; } .pin-add input { flex: 1 1 140px; letter-spacing: .25em; font-variant-numeric: tabular-nums; }
+  .pin-list { display: grid; gap: 6px; margin-top: 10px; }
+  .pin-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); }
+  .eye { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; flex: none; }
+  .eye:hover { color: var(--text); } .eye[aria-pressed="true"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+  .eye:disabled { opacity: .4; cursor: not-allowed; }
+  .pin-add .eye { width: 38px; height: auto; }
+  .pin-item .mask { font-family: ui-monospace, Menlo, monospace; letter-spacing: .2em; } .pin-item .grow { flex: 1; color: var(--muted); font-size: 12.5px; }
+  .err { color: var(--bad); font-size: 12.5px; min-height: 1.2em; margin-top: 6px; } .okmsg { color: var(--ok); }
+  .faces { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .face { position: relative; width: 72px; height: 72px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+  .face img { width: 100%; height: 100%; object-fit: cover; }
+  .face button { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%; border: 0; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; font-size: 12px; line-height: 20px; padding: 0; }
+  .actions { display: flex; gap: 8px; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 14px; flex-wrap: wrap; }
+  .placeholder { padding: 60px 20px; text-align: center; color: var(--muted); }
+  .log { max-height: 300px; overflow: auto; }
+  .log-item { display: flex; gap: 10px; padding: 8px 16px; border-top: 1px solid var(--border); font-size: 12.5px; align-items: baseline; }
+  .log-item .t { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; width: 62px; }
+  .log-item .k { font-weight: 600; } .log-item .k.ok { color: var(--ok); } .log-item .k.bad { color: var(--bad); } .log-item .k.warn { color: #d97706; }
+  .log-item .d { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .status-line { display: flex; align-items: center; gap: 8px; font-size: 13px; } .status-line i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status-line.ok i { background: var(--ok); } .status-line.bad i { background: var(--bad); }
+
+  dialog { border: 0; border-radius: 16px; padding: 0; background: var(--surface); color: var(--text); width: min(460px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+  dialog::backdrop { background: rgba(8,12,20,.55); backdrop-filter: blur(3px); }
+  .dlg-h { padding: 16px 18px 0; font-weight: 600; font-size: 16px; } .dlg-b { padding: 14px 18px; display: grid; gap: 12px; }
+  .cam { position: relative; aspect-ratio: 4/3; border-radius: 12px; overflow: hidden; background: #000; }
+  .cam video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+  .cam .guide { position: absolute; left: 50%; top: 48%; width: 46%; aspect-ratio: .78; transform: translate(-50%,-50%); border: 2px dashed rgba(255,255,255,.7); border-radius: 50%; }
+  .crop-stage { position: relative; width: min(320px, 100%); aspect-ratio: 1; margin: 0 auto; border-radius: 12px; overflow: hidden; background: #000; touch-action: none; cursor: grab; user-select: none; }
+  .crop-stage.drag { cursor: grabbing; }
+  .crop-stage canvas { width: 100%; height: 100%; display: block; }
+  .crop-stage .mask { position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 999px rgba(0,0,0,.55); outline: 2px solid rgba(255,255,255,.85); outline-offset: -2px; pointer-events: none; }
+  .crop-zoom { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); }
+  .crop-zoom input { flex: 1; accent-color: var(--accent); }
+  .toast { position: fixed; left: 50%; bottom: 24px; z-index: 50; display: flex; align-items: center; gap: 10px; padding: 11px 16px 11px 12px;
+    border-radius: 12px; background: var(--text); color: var(--bg); font-size: 14px; font-weight: 500; box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    transform: translate(-50%, 20px); opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast i { width: 22px; height: 22px; border-radius: 50%; background: var(--ok); display: grid; place-items: center; flex: none; }
+  .dlg-f { display: flex; justify-content: space-between; gap: 8px; padding: 0 18px 16px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <button type="button" class="brand" id="homeLogo" title="Back to home" aria-label="Unlockurr – back to home">
+    <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round"><path d="M4 8.5V6.5A2.5 2.5 0 0 1 6.5 4h2M15.5 4h2A2.5 2.5 0 0 1 20 6.5v2M20 15.5v2a2.5 2.5 0 0 1-2.5 2.5h-2M8.5 20h-2A2.5 2.5 0 0 1 4 17.5v-2"/><circle cx="12" cy="10.4" r="2.3" fill="#fff" stroke="none"/><path d="M11 11.8 10.3 16h3.4L13 11.8z" fill="#fff" stroke="none"/></svg></span>
+    <span class="brand-word">Unlock<span>urr</span></span>
+  </button>
+  <span class="hdr-div" aria-hidden="true"></span>
+  <div><h1>Lock Manager</h1><div class="sub">Room <span id="hdrRoom">1208</span> · Face ID by Drex</div></div>
+  <div class="spacer"></div>
+  <a class="btn" href="lock.html" target="unlockurr-lock">Open door lock ↗</a>
+  <button class="btn primary" id="addGuest">+ Add user</button>
+</header>
+
+<main>
+  <div class="stack">
+    <section class="card">
+      <h2 class="h2-click"><button type="button" class="h2-link" id="allUsers" title="View all users">Users</button> <span id="guestCount" class="tag">0</span></h2>
+      <div id="guestList"></div>
+    </section>
+    <section class="card">
+      <h2>Lock settings</h2>
+      <div class="body" style="display:grid;gap:12px">
+        <label class="f">Room number<input type="text" id="room" maxlength="8" class="in"></label>
+        <div class="status-line" id="drexStatus"><i></i><span>Checking Drex…</span></div>
+        <button class="btn danger sm" id="reset" style="justify-self:start">Reset all lock data</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="stack">
+    <section class="card editor" id="editor"><div class="placeholder">Select a user or click <b>+ Add user</b> to program PINs and faces.</div></section>
+    <section class="card">
+      <h2>Activity <button class="btn sm" id="clearLog">Clear</button></h2>
+      <div class="log" id="log"></div>
+    </section>
+  </div>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"><i><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></i><span id="toastMsg"></span></div>
+
+<dialog id="camDlg">
+  <div class="dlg-h"><span id="camTitle">Enroll face</span> · <span id="camWho"></span></div>
+  <div class="dlg-b">
+    <div class="cam"><video id="camVideo" playsinline muted autoplay></video><div class="guide"></div></div>
+    <div class="err" id="camMsg" style="color:var(--muted)">Center the face in the oval with good lighting. Capture 3–5 samples from slightly different angles.</div>
+  </div>
+  <div class="dlg-f"><button class="btn" id="camClose">Done</button><button class="btn primary" id="camShot">Capture sample</button></div>
+</dialog>
+
+<dialog id="cropDlg">
+  <div class="dlg-h">Crop profile photo</div>
+  <div class="dlg-b">
+    <div class="crop-stage" id="cropStage"><canvas id="cropCanvas" width="640" height="640"></canvas><div class="mask"></div></div>
+    <label class="crop-zoom">Zoom <input type="range" id="cropZoom" min="1" max="4" step="0.01" value="1"></label>
+    <div class="err" style="color:var(--muted)">Drag to reposition. Scroll or use the slider to zoom.</div>
+  </div>
+  <div class="dlg-f"><button class="btn" id="cropCancel">Cancel</button><button class="btn primary" id="cropOk">Use photo</button></div>
+</dialog>
+
+<template id="editorTpl">
+  <h2><span id="edTitle">New user</span></h2>
+  <div class="body">
+    <div class="sect">
+      <div class="pfp-row">
+        <div id="edAvatar"></div>
+        <div style="display:grid;gap:8px">
+          <div class="row" style="gap:8px">
+            <label class="btn sm">Upload photo<input type="file" accept="image/*" id="pfpFile" hidden></label>
+            <button class="btn sm" id="pfpCam">Take photo</button>
+            <button class="btn sm danger" id="pfpRemove">Remove</button>
+          </div>
+          <span class="hint" style="color:var(--muted);font-size:12px">Shown on the lock's welcome screen. Without one, initials are used.</span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <label class="f"><span>First name <span class="req" aria-hidden="true">*</span></span><input type="text" id="first" required maxlength="30" autocomplete="off"></label>
+      <label class="f"><span>Last name <span class="req" aria-hidden="true">*</span></span><input type="text" id="last" required maxlength="30" autocomplete="off"></label>
+    </div>
+    <div class="row">
+      <div style="display:grid;gap:0;min-width:0">
+        <label class="f">Category<input type="text" id="category" maxlength="24" autocomplete="off" placeholder="Type any category, or pick one below"></label>
+        <div class="cat-chips" id="catChips"></div>
+      </div>
+    </div>
+
+    <div class="sect">
+      <h3>Access period</h3>
+      <p class="hint">How long this profile can unlock the door, by PIN or Face ID.</p>
+      <div class="seg" role="radiogroup" aria-label="Access period">
+        <label><input type="radio" name="accType" value="permanent"> Permanent</label>
+        <label><input type="radio" name="accType" value="scheduled"> Scheduled</label>
+      </div>
+      <div class="row" id="accRange">
+        <label class="f"><span>From <span class="req" aria-hidden="true">*</span></span><input type="datetime-local" id="accStart" class="in"></label>
+        <label class="f"><span>Until <span class="req" aria-hidden="true">*</span></span><input type="datetime-local" id="accEnd" class="in"></label>
+      </div>
+      <div class="err" id="accErr"></div>
+    </div>
+
+    <div class="sect">
+      <h3>PIN codes</h3>
+      <p class="hint">4 to 8 digits. Each PIN must be unique on this lock. Click the eye to show or hide a PIN.</p>
+      <div class="pin-add">
+        <input type="password" id="pinIn" inputmode="numeric" maxlength="8" placeholder="••••" autocomplete="new-password" class="in">
+        <input type="password" id="pinIn2" inputmode="numeric" maxlength="8" placeholder="Confirm" autocomplete="new-password" class="in">
+        <button class="eye" id="pinEye" type="button" aria-pressed="false" title="Show PIN" aria-label="Show PIN"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        <button class="btn" id="pinAdd">Add PIN</button>
+      </div>
+      <div class="err" id="pinErr"></div>
+      <div class="pin-list" id="pinList"></div>
+    </div>
+
+    <div class="sect">
+      <h3>Face ID</h3>
+      <p class="hint">Enrolled faces are turned into on-device face embeddings. At the door, Drex decides who matches. Up to 6 samples.</p>
+      <div class="row" style="gap:8px">
+        <button class="btn" id="faceCam">Capture with camera</button>
+        <label class="btn">Upload face photo<input type="file" accept="image/*" id="faceFile" hidden></label>
+        <button class="btn" id="faceFromPfp">Use profile photo</button>
+      </div>
+      <div class="err" id="faceErr"></div>
+      <div class="faces" id="faceList"></div>
+    </div>
+
+    <div class="actions">
+      <button class="btn danger" id="delGuest">Delete user</button>
+      <div class="row" style="gap:8px"><button class="btn" id="cancel">Cancel</button><button class="btn primary" id="save">Save user</button></div>
+    </div>
+  </div>
+</template>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const MAX_FACES = 6;
+  let S = UL.load(), selId = null, draft = null, dirty = false;
+
+  /* ---------- guest list ---------- */
+  function renderList() {
+    const el = $('guestList'); el.innerHTML = '';
+    $('guestCount').textContent = S.users.length;
+    if (!S.users.length) { el.innerHTML = '<div class="empty">No users yet.</div>'; return; }
+    for (const u of S.users) {
+      const row = document.createElement('div'); row.className = 'guest' + (u.id === selId ? ' sel' : '');
+      row.appendChild(UL.avatar(u, 'av40'));
+      const m = document.createElement('div'); m.className = 'meta';
+      const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = UL.fullName(u);
+      const tags = document.createElement('div'); tags.className = 'tags';
+      const np = (u.pins || []).length, nf = (u.faces || []).length;
+      tags.innerHTML = `<span class="tag ${np ? 'ok' : ''}">${np} PIN${np === 1 ? '' : 's'}</span><span class="tag ${nf ? 'ok' : ''}">${nf ? 'Face ID · ' + nf : 'No face'}</span>`;
+      if (u.category) { const c = document.createElement('span'); c.className = 'tag'; c.textContent = u.category; tags.prepend(c); }
+      const st = UL.accessStatus(u).state;
+      if (st !== 'permanent') {
+        const a = document.createElement('span'); a.className = 'tag ' + ({ active: 'ok', upcoming: 'warn', expired: 'bad' })[st];
+        a.textContent = UL.accessLabel(u, Date.now(), true); a.title = UL.accessLabel(u); tags.appendChild(a);
+      }
+      m.append(nm, tags); row.appendChild(m);
+      row.onclick = () => select(u.id);
+      el.appendChild(row);
+    }
+  }
+  function goHome() {
+    if (dirty && !confirm('Discard unsaved changes?')) return;
+    S = UL.load(); dirty = false; draft = null; selId = null; renderEditor(); renderList();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  $('homeLogo').onclick = goHome;
+  $('allUsers').onclick = goHome;
+  function renderOverview(ed) {
+    if (!S.users.length) { ed.innerHTML = '<div class="placeholder">No users yet. Click <b>+ Add user</b> to program PINs and faces.</div>'; return; }
+    const active = S.users.filter(u => UL.accessStatus(u).active).length;
+    ed.innerHTML = `<div class="ov"><div class="ov-h"><b>All users</b><span></span></div><div id="ovList"></div></div>`;
+    ed.querySelector('.ov-h span').textContent = `${S.users.length} total · ${active} can unlock now`;
+    for (const u of S.users) {
+      const r = document.createElement('div'); r.className = 'ov-row'; r.onclick = () => select(u.id);
+      r.appendChild(UL.avatar(u, 'av40'));
+      const m = document.createElement('div');
+      const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = UL.fullName(u);
+      const sub = document.createElement('div'); sub.className = 'sub';
+      sub.textContent = [u.category, UL.accessLabel(u)].filter(Boolean).join(' · ');
+      m.append(nm, sub); r.appendChild(m);
+      const np = (u.pins || []).length, nf = (u.faces || []).length, st = UL.accessStatus(u).state;
+      const t = document.createElement('div'); t.className = 'tags';
+      t.innerHTML = `<span class="tag ${np ? 'ok' : ''}">${np} PIN${np === 1 ? '' : 's'}</span><span class="tag ${nf ? 'ok' : ''}">${nf ? 'Face ID · ' + nf : 'No face'}</span>`
+        + `<span class="tag ${({ permanent: 'ok', active: 'ok', upcoming: 'warn', expired: 'bad' })[st]}">${({ permanent: 'Active', active: 'Active', upcoming: 'Not yet active', expired: 'Expired' })[st]}</span>`;
+      r.appendChild(t); ed.querySelector('#ovList').appendChild(r);
+    }
+  }
+  function select(id) {
+    if (dirty && !confirm('Discard unsaved changes?')) return;
+    selId = id; const u = S.users.find(x => x.id === id);
+    draft = u ? structuredClone(u) : { id: UL.uid(), first: '', last: '', category: '', access: { type: 'permanent' }, pfp: null, pins: [], faces: [], created: Date.now(), isNew: true };
+    dirty = false; renderEditor(); renderList();
+  }
+  $('addGuest').onclick = () => select(null);
+
+  /* ---------- editor ---------- */
+  function renderEditor() {
+    const ed = $('editor');
+    if (!draft) return renderOverview(ed);
+    ed.innerHTML = ''; ed.appendChild($('editorTpl').content.cloneNode(true));
+    $('edTitle').textContent = draft.isNew ? 'New user' : UL.fullName(draft);
+    $('first').value = draft.first; $('last').value = draft.last;
+    $('delGuest').classList.toggle('hidden', !!draft.isNew);
+    paintAvatar(); paintPins(); paintFaces();
+
+    for (const k of ['first', 'last']) $(k).oninput = e => { draft[k] = e.target.value; dirty = true; paintAvatar(); };
+    // category: free text, suggestions = common roles + any already used on this lock
+    $('category').value = draft.category || '';
+    $('category').oninput = e => { draft.category = e.target.value; dirty = true; paintCats(); };
+    paintCats();
+    paintAccess();
+    for (const r of document.querySelectorAll('input[name=accType]')) r.onchange = () => {
+      if (r.value === 'scheduled' && draft.access?.type !== 'scheduled') {
+        const start = new Date(); start.setMinutes(0, 0, 0);
+        draft.access = { type: 'scheduled', start: +start, end: +start + 24 * 3600e3 };
+      } else if (r.value === 'permanent') draft.access = { type: 'permanent' };
+      dirty = true; paintAccess();
+    };
+    for (const k of ['accStart', 'accEnd']) $(k).onchange = e => {
+      const t = e.target.value ? new Date(e.target.value).getTime() : null;
+      draft.access[k === 'accStart' ? 'start' : 'end'] = t; dirty = true; paintAccess();
+    };
+    $('pfpFile').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      e.target.value = '';
+      let img; try { img = await UL.fileToImage(f); } catch { return alert('Could not read that image.'); }
+      setPfp(await openCrop(img, img.naturalWidth, img.naturalHeight));
+    };
+    $('pfpCam').onclick = () => openCam('pfp');
+    $('pfpRemove').onclick = () => { draft.pfp = null; dirty = true; paintAvatar(); };
+    $('pinAdd').onclick = addPin;
+    $('pinEye').onclick = e => {
+      const show = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+      for (const k of ['pinIn', 'pinIn2']) $(k).type = show ? 'text' : 'password';
+      setEye(e.currentTarget, show);
+    };
+    for (const k of ['pinIn', 'pinIn2']) {
+      $(k).oninput = e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 8); $('pinErr').textContent = ''; };
+      $(k).onkeydown = e => { if (e.key === 'Enter') addPin(); };
+    }
+    $('faceCam').onclick = () => openCam('face');
+    $('faceFile').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (f) { const img = await UL.fileToImage(f).catch(() => null); if (img) enrollFrom(img, img.naturalWidth, img.naturalHeight, $('faceErr')); } };
+    $('faceFromPfp').onclick = async () => {
+      if (!draft.pfp) return showErr($('faceErr'), 'Upload a profile photo first.');
+      const img = new Image(); img.src = draft.pfp; await img.decode(); enrollFrom(img, 256, 256, $('faceErr'));
+    };
+    $('save').onclick = saveDraft;
+    $('cancel').onclick = () => { dirty = false; draft = null; selId = null; renderEditor(); renderList(); };
+    $('delGuest').onclick = () => {
+      if (!confirm(`Delete ${UL.fullName(draft)}? Their PINs and Face ID will stop working immediately.`)) return;
+      S = UL.load(); S.users = S.users.filter(u => u.id !== draft.id); UL.save(S);
+      dirty = false; draft = null; selId = null; renderEditor(); renderList();
+    };
+  }
+  function paintAvatar() { const a = $('edAvatar'); a.innerHTML = ''; a.appendChild(UL.avatar(draft, 'av96')); }
+  function showErr(el, t, ok = false) { el.textContent = t; el.classList.toggle('okmsg', ok); }
+
+  function paintPins() {
+    const l = $('pinList'); l.innerHTML = '';
+    if (!draft.pins.length) { l.innerHTML = '<div style="color:var(--muted);font-size:12.5px">No PINs yet.</div>'; return; }
+    draft.pins.forEach((p, i) => {
+      const it = document.createElement('div'); it.className = 'pin-item';
+      it.innerHTML = `<span class="mask"></span><span class="grow">${p.len}-digit PIN · added ${new Date(p.added).toLocaleDateString()}</span>`;
+      const mask = it.querySelector('.mask'); mask.textContent = '•'.repeat(p.len);
+      const eye = document.createElement('button'); eye.className = 'eye'; eye.type = 'button'; eye.innerHTML = EYE_SVG;
+      if (p.code) {
+        setEye(eye, false);
+        eye.onclick = () => { const show = eye.getAttribute('aria-pressed') !== 'true'; mask.textContent = show ? p.code : '•'.repeat(p.len); setEye(eye, show); };
+      } else {
+        eye.disabled = true; eye.title = 'Added before PINs could be viewed. Remove and re-add it to make it viewable.';
+      }
+      it.insertBefore(eye, it.firstChild);
+      const b = document.createElement('button'); b.className = 'btn sm danger'; b.textContent = 'Remove';
+      b.onclick = () => { draft.pins.splice(i, 1); dirty = true; paintPins(); };
+      it.appendChild(b); l.appendChild(it);
+    });
+  }
+  const EYE_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const EYE_OFF_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"/></svg>';
+  function setEye(btn, shown) {
+    btn.setAttribute('aria-pressed', String(shown)); btn.innerHTML = shown ? EYE_OFF_SVG : EYE_SVG;
+    btn.title = btn.ariaLabel = shown ? 'Hide PIN' : 'Show PIN';
+  }
+  async function addPin() {
+    const a = $('pinIn').value, b = $('pinIn2').value, err = $('pinErr');
+    if (!UL.validPin(a)) return showErr(err, 'PIN must be 4 to 8 digits.');
+    if (a !== b) return showErr(err, 'PINs don’t match.');
+    const h = await UL.hashPin(a);
+    if (draft.pins.some(p => p.hash === h)) return showErr(err, 'This user already has that PIN.');
+    const owner = UL.load().users.find(u => u.id !== draft.id && (u.pins || []).some(p => p.hash === h));
+    if (owner) return showErr(err, `That PIN is already assigned to ${UL.fullName(owner)}.`);
+    draft.pins.push({ hash: h, len: a.length, added: Date.now(), code: a }); dirty = true;
+    $('pinIn').value = $('pinIn2').value = '';
+    showErr(err, /^(\d)\1+$/.test(a) || '0123456789'.includes(a) || '9876543210'.includes(a) ? 'Added — note: this PIN is easy to guess.' : 'PIN added. Save to apply.', true);
+    paintPins();
+  }
+
+  function paintFaces() {
+    const l = $('faceList'); l.innerHTML = '';
+    draft.faces.forEach((f, i) => {
+      const d = document.createElement('div'); d.className = 'face';
+      const img = new Image(); img.src = f.thumb; d.appendChild(img);
+      const x = document.createElement('button'); x.textContent = '✕'; x.title = 'Remove sample';
+      x.onclick = () => { draft.faces.splice(i, 1); dirty = true; paintFaces(); };
+      d.appendChild(x); l.appendChild(d);
+    });
+    $('faceCam').disabled = draft.faces.length >= MAX_FACES;
+  }
+  async function enrollFrom(src, w, h, msgEl) {
+    if (draft.faces.length >= MAX_FACES) return showErr(msgEl, `Maximum ${MAX_FACES} samples.`), false;
+    showErr(msgEl, 'Loading face models…', true);
+    try { await UL.loadFace(); } catch { return showErr(msgEl, 'Face models failed to load (check internet connection).'), false; }
+    showErr(msgEl, 'Detecting face…', true);
+    const r = await UL.describe(src);
+    if (!r) return showErr(msgEl, 'No face detected. Try a clearer, front-facing photo.'), false;
+    if (r.score < 0.7) return showErr(msgEl, 'Face is unclear — improve lighting and try again.'), false;
+    draft.faces.push({ d: r.d, thumb: UL.squareCrop(src, w, h, r.box, 112), added: Date.now() });
+    dirty = true; paintFaces();
+    showErr(msgEl, `Sample ${draft.faces.length} captured. Save to apply.`, true);
+    return true;
+  }
+
+  function saveDraft() {
+    const first = draft.first.trim(), last = draft.last.trim();
+    if (!first || !last) { alert('Enter a first and last name.'); return; }
+    const acc = draft.access?.type === 'scheduled' ? draft.access : { type: 'permanent' };
+    if (acc.type === 'scheduled') {
+      if (!acc.start || !acc.end) { showErr($('accErr'), 'Pick both a start and an end date and time.'); $('accErr').scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+      if (acc.end <= acc.start) { showErr($('accErr'), 'The end must be after the start.'); $('accErr').scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+    }
+    draft.access = acc; draft.category = (draft.category || '').trim().slice(0, 24);
+    if (!draft.pins.length && !draft.faces.length && !confirm('This user has no PIN or face and won’t be able to unlock. Save anyway?')) return;
+    S = UL.load();
+    const rec = { ...draft, first, last }; delete rec.isNew;
+    // saving a user with a category brings it back into suggestions if it had been removed
+    if (rec.category) S.hiddenCats = (S.hiddenCats || []).filter(c => c.toLowerCase() !== rec.category.toLowerCase());
+    const i = S.users.findIndex(u => u.id === rec.id);
+    if (i >= 0) S.users[i] = rec; else S.users.push(rec);
+    // re-check PIN uniqueness against latest data
+    const others = S.users.filter(u => u.id !== rec.id).flatMap(u => (u.pins || []).map(p => p.hash));
+    if (rec.pins.some(p => others.includes(p.hash))) { alert('One of these PINs is already assigned to another user.'); return; }
+    if (!UL.save(S)) return;
+    const isNew = i < 0;
+    selId = null; draft = null; dirty = false;
+    renderEditor(); renderList();
+    toast(`${isNew ? 'User added' : 'Changes saved'} · ${UL.fullName(rec)}`);
+  }
+  let toastTimer = 0;
+  function toast(msg) {
+    $('toastMsg').textContent = msg; const t = $('toast');
+    t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+  }
+
+  /* ---------- camera enrollment ---------- */
+  let camStream = null, camMode = 'face';
+  async function openCam(mode = 'face') {
+    camMode = mode;
+    const pfp = mode === 'pfp';
+    $('camWho').textContent = (draft.first || 'New user');
+    $('camTitle').textContent = pfp ? 'Profile photo' : 'Enroll face';
+    $('camShot').textContent = pfp ? 'Take photo' : 'Capture sample';
+    $('camClose').textContent = pfp ? 'Cancel' : 'Done';
+    $('camShot').disabled = !pfp && draft.faces.length >= MAX_FACES;
+    $('camMsg').textContent = pfp ? 'Center your face in the oval, then take the photo.'
+      : 'Center the face in the oval with good lighting. Capture 3–5 samples from slightly different angles.';
+    $('camDlg').showModal();
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } });
+      $('camVideo').srcObject = camStream; await $('camVideo').play();
+    } catch { $('camMsg').textContent = 'Camera unavailable — allow camera access or upload a photo instead.'; }
+    if (!pfp) UL.loadFace().catch(() => {});
+  }
+  function closeCam() { camStream?.getTracks().forEach(t => t.stop()); camStream = null; if ($('camDlg').open) $('camDlg').close(); }
+  $('camClose').onclick = closeCam;
+  $('camDlg').addEventListener('close', closeCam);
+  $('camShot').onclick = async () => {
+    const v = $('camVideo'); if (!camStream || v.readyState < 2) return;
+    if (camMode === 'pfp') {
+      // mirror the frame so the photo matches the (mirrored) preview, then let the user crop it
+      const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+      const g = c.getContext('2d'); g.translate(c.width, 0); g.scale(-1, 1); g.drawImage(v, 0, 0);
+      closeCam();
+      return setPfp(await openCrop(c, c.width, c.height));
+    }
+    $('camShot').disabled = true;
+    // snapshot the frame so thumbnail and descriptor come from the same image
+    const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d').drawImage(v, 0, 0);
+    await enrollFrom(c, c.width, c.height, $('camMsg'));
+    $('camShot').disabled = draft.faces.length >= MAX_FACES;
+  };
+
+  /* ---------- category suggestions ---------- */
+  const DEFAULT_CATS = ['Resident', 'Guest', 'Owner', 'Staff', 'Family', 'Cleaner'];
+  const X_SVG = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  function catSuggestions() {
+    const st = UL.load(), hidden = new Set((st.hiddenCats || []).map(c => c.toLowerCase())), seen = new Set(), out = [];
+    for (const c of [...DEFAULT_CATS, ...st.users.map(u => (u.category || '').trim())]) {
+      const k = c.toLowerCase(); if (c && !hidden.has(k) && !seen.has(k)) { seen.add(k); out.push(c); }
+    }
+    return { list: out };
+  }
+  function setHiddenCats(fn) { const st = UL.load(); st.hiddenCats = fn(st.hiddenCats || []); UL.save(st); S = st; paintCats(); }
+  function paintCats() {
+    const box = $('catChips'); if (!box) return; box.innerHTML = '';
+    const { list } = catSuggestions(), cur = (draft.category || '').trim().toLowerCase();
+    for (const c of list) {
+      const chip = document.createElement('span'); chip.className = 'cat-chip' + (c.toLowerCase() === cur ? ' on' : '');
+      const pick = document.createElement('button'); pick.type = 'button'; pick.textContent = c; pick.title = `Use “${c}”`;
+      pick.onclick = () => { draft.category = c; $('category').value = c; dirty = true; paintCats(); };
+      const x = document.createElement('button'); x.type = 'button'; x.className = 'x'; x.innerHTML = X_SVG;
+      x.title = x.ariaLabel = `Remove “${c}” from suggestions`;
+      x.onclick = () => setHiddenCats(h => [...h.filter(v => v.toLowerCase() !== c.toLowerCase()), c]);
+      chip.append(pick, x); box.appendChild(chip);
+    }
+  }
+
+  /* ---------- access period ---------- */
+  const toLocalInput = ms => { if (!ms) return ''; const d = new Date(ms); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+  function paintAccess() {
+    const a = draft.access?.type === 'scheduled' ? draft.access : { type: 'permanent' };
+    for (const r of document.querySelectorAll('input[name=accType]')) r.checked = r.value === a.type;
+    $('accRange').classList.toggle('hidden', a.type !== 'scheduled');
+    $('accStart').value = toLocalInput(a.start); $('accEnd').value = toLocalInput(a.end);
+    const err = $('accErr');
+    if (a.type !== 'scheduled') return showErr(err, '');
+    if (a.start && a.end && a.end <= a.start) return showErr(err, 'The end must be after the start.');
+    const st = UL.accessStatus(draft).state;
+    showErr(err, st === 'expired' ? 'This period has already ended, so the profile won’t unlock.' : st === 'upcoming' ? `Can unlock from ${UL.fmtWhen(a.start)}.` : a.end ? `Active now, until ${UL.fmtWhen(a.end)}.` : '', st === 'active' || st === 'upcoming');
+  }
+
+  /* ---------- profile photo crop ---------- */
+  function setPfp(url) { if (url && draft) { draft.pfp = url; dirty = true; paintAvatar(); } }
+  const PFP_SIZE = 256;
+  let crop = null;
+  function openCrop(src, w, h) {
+    return new Promise(resolve => {
+      crop = { src, w, h, zoom: 1, cx: w / 2, cy: h / 2, resolve };
+      $('cropZoom').value = 1;
+      drawCrop(); $('cropDlg').showModal();
+    });
+  }
+  // visible square side in source pixels at the current zoom (zoom 1 = shortest side fills the circle)
+  const cropSide = () => Math.min(crop.w, crop.h) / crop.zoom;
+  function clampCrop() {
+    const half = cropSide() / 2;
+    crop.cx = Math.min(Math.max(crop.cx, half), crop.w - half);
+    crop.cy = Math.min(Math.max(crop.cy, half), crop.h - half);
+  }
+  function renderCrop(ctx, size) {
+    const side = cropSide();
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, size, size);
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(crop.src, crop.cx - side / 2, crop.cy - side / 2, side, side, 0, 0, size, size);
+  }
+  function drawCrop() { if (!crop) return; clampCrop(); const cv = $('cropCanvas'); renderCrop(cv.getContext('2d'), cv.width); }
+  function finishCrop(ok) {
+    if (!crop) return;
+    const { resolve } = crop; let url = null;
+    if (ok) { const c = document.createElement('canvas'); c.width = c.height = PFP_SIZE; renderCrop(c.getContext('2d'), PFP_SIZE); url = c.toDataURL('image/jpeg', 0.88); }
+    crop = null; if ($('cropDlg').open) $('cropDlg').close(); resolve(url);
+  }
+  function setZoom(z, fx = 0.5, fy = 0.5) {
+    // keep the point under (fx, fy) of the stage fixed while zooming
+    const before = cropSide(); crop.zoom = Math.min(4, Math.max(1, z)); const after = cropSide();
+    crop.cx += (fx - 0.5) * (before - after); crop.cy += (fy - 0.5) * (before - after);
+    $('cropZoom').value = crop.zoom; drawCrop();
+  }
+  $('cropZoom').oninput = e => crop && setZoom(+e.target.value);
+  $('cropOk').onclick = () => finishCrop(true);
+  $('cropCancel').onclick = () => finishCrop(false);
+  $('cropDlg').addEventListener('close', () => finishCrop(false));
+  {
+    const st = $('cropStage'); let drag = null;
+    st.addEventListener('pointerdown', e => { if (!crop) return; drag = { x: e.clientX, y: e.clientY }; st.setPointerCapture(e.pointerId); st.classList.add('drag'); });
+    st.addEventListener('pointermove', e => {
+      if (!drag || !crop) return;
+      const k = cropSide() / st.clientWidth;
+      crop.cx -= (e.clientX - drag.x) * k; crop.cy -= (e.clientY - drag.y) * k;
+      drag = { x: e.clientX, y: e.clientY }; drawCrop();
+    });
+    const end = () => { drag = null; st.classList.remove('drag'); };
+    st.addEventListener('pointerup', end); st.addEventListener('pointercancel', end);
+    st.addEventListener('wheel', e => {
+      if (!crop) return; e.preventDefault();
+      const r = st.getBoundingClientRect();
+      setZoom(crop.zoom * Math.exp(-e.deltaY * 0.0015), (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
+    }, { passive: false });
+  }
+
+  /* ---------- settings, log, status ---------- */
+  $('room').value = S.room; $('hdrRoom').textContent = S.room;
+  $('room').onchange = e => { const v = e.target.value.trim() || '1208'; S = UL.load(); S.room = v; UL.save(S); $('hdrRoom').textContent = v; e.target.value = v; };
+  $('reset').onclick = () => { if (confirm('Erase every user, PIN, face and the activity log on this lock?')) { localStorage.removeItem(UL.KEY); S = UL.load(); draft = null; selId = null; dirty = false; $('room').value = S.room; renderEditor(); renderList(); renderLog(); } };
+  $('clearLog').onclick = () => { S = UL.load(); S.log = []; UL.save(S); renderLog(); };
+
+  function renderLog() {
+    const el = $('log'); el.innerHTML = '';
+    if (!S.log.length) { el.innerHTML = '<div class="empty">No lock activity yet.</div>'; return; }
+    for (const e of S.log.slice(0, 40)) {
+      const r = document.createElement('div'); r.className = 'log-item';
+      const t = new Date(e.t);
+      const ok = e.kind === 'unlock', who = !ok && e.name;   // a refusal that knows who it was (e.g. expired access)
+      r.innerHTML = `<span class="t"></span><span class="k ${ok ? 'ok' : who ? 'warn' : 'bad'}"></span><span class="d"></span>`;
+      r.children[0].textContent = t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      r.children[1].textContent = ok ? `${e.name} unlocked` : who ? `${e.name}${e.category ? ' (' + e.category + ')' : ''} denied` : 'Denied';
+      r.children[2].textContent = `${e.method}${e.detail ? ' · ' + e.detail : ''}`;
+      r.title = t.toLocaleString() + (e.detail ? '\n' + e.detail : '');
+      el.appendChild(r);
+    }
+  }
+  window.addEventListener('storage', e => { if (e.key === UL.KEY) { S = UL.load(); renderLog(); if (!dirty) renderList(); $('hdrRoom').textContent = S.room; } });
+  window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+  (async () => {
+    const st = $('drexStatus');
+    try {
+      const j = await (await fetch('/api/status', { cache: 'no-store' })).json();
+      st.className = 'status-line ' + (j.drex_key_configured ? 'ok' : 'bad');
+      st.lastChild.textContent = j.drex_key_configured ? `Drex connected · ${j.model}` : 'Drex key missing on server — Face ID disabled';
+    } catch { st.className = 'status-line bad'; st.lastChild.textContent = 'Lock server offline — run server.py'; }
+  })();
+
+  renderList(); renderLog();
+})();
+</script>
+</body>
+</html>
